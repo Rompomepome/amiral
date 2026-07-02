@@ -1,0 +1,54 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shell syntax
+        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/fable-aliases.sh
+
+      - name: Fresh install
+        run: |
+          export HOME=$(mktemp -d)
+          bash install.sh
+          test -f "$HOME/.claude/fable-lean-policy.md"
+          test -f "$HOME/.claude/agents/implementer.md"
+          test -f "$HOME/.claude/agents/grunt.md"
+          test -f "$HOME/.claude/agents/reviewer.md"
+          test -f "$HOME/.claude/skills/plan-ship/SKILL.md"
+          test -f "$HOME/.claude/fable-aliases.sh"
+          test -f "$HOME/.claude/fable-profiles.ps1"
+          grep -q '@fable-lean-policy.md' "$HOME/.claude/CLAUDE.md"
+
+      - name: Idempotence (double install, no duplicate import)
+        run: |
+          export HOME=$(mktemp -d)
+          bash install.sh && bash install.sh
+          [ "$(grep -c 'fable-lean-policy.md' "$HOME/.claude/CLAUDE.md")" = "1" ]
+
+      - name: Preserves existing CLAUDE.md
+        run: |
+          export HOME=$(mktemp -d)
+          mkdir -p "$HOME/.claude"
+          echo "# my precious existing memory" > "$HOME/.claude/CLAUDE.md"
+          bash install.sh
+          grep -q "my precious existing memory" "$HOME/.claude/CLAUDE.md"
+          grep -q '@fable-lean-policy.md' "$HOME/.claude/CLAUDE.md"
+
+      - name: Clean uninstall
+        run: |
+          export HOME=$(mktemp -d)
+          bash install.sh && bash uninstall.sh
+          ! grep -q 'fable-lean-policy' "$HOME/.claude/CLAUDE.md"
+          [ ! -f "$HOME/.claude/agents/implementer.md" ]
+          [ ! -d "$HOME/.claude/skills/plan-ship" ]
+
+      - name: No dangerous flags shipped
+        run: |
+          ! grep -R -- "--dangerously-skip-permissions" shell/ install.sh

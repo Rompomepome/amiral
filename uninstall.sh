@@ -9,7 +9,8 @@ rm -f "$CLAUDE_DIR/fable-lean-policy.md" \
       "$CLAUDE_DIR/agents/implementer.md" \
       "$CLAUDE_DIR/agents/grunt.md" \
       "$CLAUDE_DIR/agents/reviewer.md" \
-      "$CLAUDE_DIR/fable-aliases.sh"
+      "$CLAUDE_DIR/fable-aliases.sh" \
+      "$CLAUDE_DIR/fable-profiles.ps1"
 rm -rf "$CLAUDE_DIR/skills/plan-ship"
 
 # Remove the @-import line, keep the rest of CLAUDE.md untouched

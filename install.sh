@@ -6,6 +6,12 @@ set -euo pipefail
 # Idempotent: safe to re-run. Never overwrites your CLAUDE.md (backup +
 # @-import instead).
 
+if ! command -v claude >/dev/null 2>&1; then
+  echo "!!  'claude' not found in PATH. Install Claude Code first:"
+  echo "    https://code.claude.com/docs  (then re-run this installer)"
+  echo "    Continuing anyway — the config will be picked up once installed."
+fi
+
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 CLAUDE_MD="$CLAUDE_DIR/CLAUDE.md"
@@ -45,6 +51,14 @@ echo "  ok  skills/plan-ship/SKILL.md"
 # 4. Aliases
 cp "$REPO_DIR/shell/fable-aliases.sh" "$CLAUDE_DIR/fable-aliases.sh"
 echo "  ok  fable-aliases.sh"
+cp "$REPO_DIR/shell/fable-profiles.ps1" "$CLAUDE_DIR/fable-profiles.ps1"
+echo "  ok  fable-profiles.ps1 (Windows/PowerShell)"
+
+case "${SHELL:-}" in
+  */zsh) RC_FILE="~/.zshrc" ;;
+  */bash) RC_FILE="~/.bashrc" ;;
+  *) RC_FILE="~/.zshrc (or your shell's rc file)" ;;
+esac
 
 cat << EOF
 
@@ -54,8 +68,9 @@ Installed.
 Final steps (2 min):
 
 1) Load the aliases in your shell:
-     echo 'source $CLAUDE_DIR/fable-aliases.sh' >> ~/.zshrc && source ~/.zshrc
-   (bash users: use ~/.bashrc)
+     echo 'source $CLAUDE_DIR/fable-aliases.sh' >> $RC_FILE && source $RC_FILE
+   PowerShell (Windows): add to \$PROFILE:
+     . "\$HOME\.claude\fable-profiles.ps1"
 
 2) Update Claude Code (Sonnet 5 needs v2.1.197+):
      claude update

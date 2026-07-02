@@ -4,6 +4,7 @@
 
 *Français ? Lisez le [README.fr.md](README.fr.md).*
 
+![CI](https://github.com/YOUR_USERNAME/fable-lean/actions/workflows/ci.yml/badge.svg)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-v2.1.197%2B-white?style=flat&labelColor=555)
 ![License](https://img.shields.io/badge/license-MIT-white?style=flat&labelColor=555)
 ![Model routing](https://img.shields.io/badge/pattern-orchestrator%2Fworkers-white?style=flat&labelColor=555)
@@ -63,7 +64,9 @@ Three levers, combined:
 | 🅐 **reviewer** | [`.claude/agents/reviewer.md`](.claude/agents/reviewer.md) | Fresh-context code review right after implementation. Read-only tools, prioritized report. |
 | 🅢 **/plan-ship** | [`.claude/skills/plan-ship/SKILL.md`](.claude/skills/plan-ship/SKILL.md) | One command: plan → delegate → verify → review → summary. Never commits without your OK. |
 | 📜 **Routing policy** | [`CLAUDE.md`](CLAUDE.md) | The persistent memory: orchestrator role, anti-fan-out discipline, mandatory verification. |
-| ⚡ **Shell profiles** | [`shell/fable-aliases.sh`](shell/fable-aliases.sh) | `fable-lean`, `fable-fine`, `fable-ultra`, `sonnet-fast` — one word to launch each mode. |
+| ⚡ **Shell profiles** | [`shell/fable-aliases.sh`](shell/fable-aliases.sh) | `fable-lean`, `fable-fine`, `fable-ultra`, `sonnet-fast` — one word to launch each mode. Safe permission defaults. |
+| 🪟 **PowerShell profiles** | [`shell/fable-profiles.ps1`](shell/fable-profiles.ps1) | Same four profiles for Windows. |
+| ✅ **verify.sh template** | [`templates/verify-nextjs.sh`](templates/verify-nextjs.sh) | Machine-verifiable "done" gate (typecheck + lint + build) — the plan's completion criterion. |
 | 🔧 **Installer** | [`install.sh`](install.sh) | Idempotent. Copies everything to `~/.claude/`, backs up your existing `CLAUDE.md`, never overwrites. |
 
 This repo **dogfoods itself**: clone it, open Claude Code inside, and the routing config in `.claude/` is live.
@@ -81,6 +84,11 @@ echo 'source ~/.claude/fable-aliases.sh' >> ~/.zshrc && source ~/.zshrc
 # make sure Claude Code is recent (Sonnet 5 needs v2.1.197+)
 claude update
 ```
+
+**Windows (PowerShell):** run `./install.sh` from Git Bash or WSL, then add `. "$HOME\.claude\fable-profiles.ps1"` to your `$PROFILE`.
+
+> [!NOTE]
+> Profiles ship with Claude Code's **default permission prompts** — safe by default. Want fewer prompts? Read [docs/permissions.md](docs/permissions.md) for the full speed/safety spectrum (allowlists, `acceptEdits`, and why we don't ship YOLO mode).
 
 Then, in any project:
 
@@ -123,13 +131,14 @@ Full math and sources: [docs/quota-math.md](docs/quota-math.md).
 3. **"Done" means verified.** Build + typecheck + lint (+ tests when present) gate every completion claim. UI changes require render verification, not just green tests.
 4. **Never destructive.** The installer backs up `CLAUDE.md`, imports via `@`-reference instead of overwriting, and is safe to re-run.
 5. **No auto-commit.** The orchestrator never commits or pushes without an explicit human OK.
+6. **Safe by default, fast by opt-in.** No `--dangerously-skip-permissions` shipped — CI enforces it. The permission spectrum is documented so *you* choose the trade-off knowingly.
 
 ## 🗺️ Roadmap
 
-- [ ] `verify.sh` templates per stack (Next.js, Python, Rust)
+- [x] `verify.sh` template — Next.js ([templates/](templates/)); Python & Rust welcome via PR
 - [ ] Optional [Ralph-loop](https://github.com/anthropics/claude-code/tree/main/plugins/ralph-wiggum) integration: lean routing inside autonomous loops
 - [ ] Plugin packaging for one-command install via marketplace
-- [ ] Windows (PowerShell) profiles
+- [x] Windows (PowerShell) profiles
 
 ## 🤝 Contributing
 
@@ -140,5 +149,7 @@ PRs welcome — especially real-world quota numbers (before/after), new worker a
 [MIT](LICENSE)
 
 ---
+
+**Disclaimer:** community project, not affiliated with or endorsed by Anthropic. "Claude", "Claude Code" and model names are Anthropic's.
 
 *Inspired by the structure of [claude-code-best-practice](https://github.com/shanraisshan/claude-code-best-practice). Built from the official [subagents](https://code.claude.com/docs/en/sub-agents) and [model configuration](https://code.claude.com/docs/en/model-config) docs.*

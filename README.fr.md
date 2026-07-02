@@ -39,6 +39,8 @@ claude update
 | `fable-ultra` | Fable 5 + ultracode | Sonnet forcé | Gros audits UNIQUEMENT. 🔥 Incinérateur de quota |
 | `sonnet-fast` | Sonnet @ high | hérité | Tout ce qui ne mérite pas Fable |
 
+Par défaut, les profils gardent les **prompts de permission standard** (sûr par défaut). Pour aller plus vite en connaissance de cause : [docs/permissions.md](docs/permissions.md). Windows : profils PowerShell inclus (`shell/fable-profiles.ps1`).
+
 En session : `/plan-ship <description de la feature>` déroule plan → délégation → vérification → revue.
 
 ## Vérifie que le routing marche vraiment
