@@ -5,8 +5,8 @@
 #
 # Permissions: these profiles use Claude Code's DEFAULT permission
 # prompts (safe by default). See docs/permissions.md for faster modes,
-# including the middle-ground `--permission-mode acceptEdits` and the
-# risks of `--dangerously-skip-permissions`.
+# from allowlists and `--permission-mode acceptEdits` up to the risks
+# of full permission bypass (YOLO mode) — which we do not ship.
 
 # Daily driver: Fable brain, xhigh reasoning, ONE window (no ruinous
 # auto-fan-out), all subagents FORCED onto Sonnet.
