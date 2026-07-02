@@ -1,4 +1,4 @@
-# fable-lean routing policy
+# amiral routing policy — the admiral does not row
 
 ## Role and delegation
 - On any substantive task, you are an ORCHESTRATOR: you plan, decompose,
