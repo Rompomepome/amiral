@@ -40,6 +40,8 @@ Windows : profils PowerShell inclus (`shell/amiral-profiles.ps1`).
 
 Par défaut, prompts de permission standard (sûr par défaut) — le spectre complet vitesse/sécurité est dans [docs/permissions.md](docs/permissions.md). En session : `/plan-ship <feature>` déroule plan → délégation → vérification → revue.
 
+**Au-delà de Claude Code** : l'implémentation est Claude Code, mais le pattern et la discipline sont portables. [`PATTERN.md`](PATTERN.md) = la spec agnostique (Aider fait du brain/hands nativement via `--architect`) ; [`ports/AGENTS.md`](ports/AGENTS.md) = **la discipline du matelot** au standard AGENTS.md (Linux Foundation, lu par 25+ outils : Codex, Aider, OpenCode, Cursor, Gemini CLI...). L'amiral est spécifique à Claude Code ; le matelot est universel.
+
 **Pas un framework** : là où le leader du secteur pèse 250 000+ lignes et est bloqué sur les abonnements Pro/Max (API only), amiral c'est 6 fichiers markdown et des primitives natives — ça marche sur ton abonnement. Comparatif honnête : [docs/landscape.md](docs/landscape.md).
 
 **À faire une fois** : lance `amiral-doctor`, puis : vérifie dans `/agents` que les workers tournent sur Sonnet (pas le cerveau). Sinon : `export AMIRAL_HANDS=claude-sonnet-5`.

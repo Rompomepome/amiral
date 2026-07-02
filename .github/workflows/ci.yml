@@ -20,6 +20,12 @@ jobs:
           python3 -c "import json; json.load(open('.claude-plugin/plugin.json'))"
           python3 -c "import json; json.load(open('.claude-plugin/marketplace.json'))"
 
+      - name: Portable layer present
+        run: |
+          test -f PATTERN.md
+          test -f ports/AGENTS.md
+          grep -q "matelot discipline" ports/AGENTS.md
+
       - name: Dogfood mirror in sync with canonical
         run: |
           diff -r agents .claude/agents

@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.4.0 — 2026-07-03
+- **Three-layer split**: universal pattern -> portable discipline ->
+  Claude Code reference implementation.
+- `PATTERN.md`: CLI-agnostic spec with honest prior art (Aider
+  architect/editor, Roo modes, opusplan) and an implementation map per
+  CLI, including the "you are the amiral" degraded protocol.
+- `ports/AGENTS.md`: the **matelot discipline** in the AGENTS.md open
+  standard (Linux Foundation) — one file, readable by 25+ tools (Codex,
+  Aider, OpenCode, Cursor, Gemini CLI, Copilot, Zed, Warp...). The
+  amiral is Claude Code-specific; the matelot is universal.
+- `ports/README.md`: ports philosophy — we document ports, we do not
+  maintain runtimes for other CLIs.
+
+
 ## v0.3.0 — 2026-07-03
 - `amiral doctor`: automated fleet health check (install, version,
   routing config, silent-fallback detection guidance).

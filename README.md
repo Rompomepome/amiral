@@ -59,6 +59,7 @@ The pattern outlives any single model. That's the point.
 | ✅ **verify.sh template** | [`templates/verify-nextjs.sh`](templates/verify-nextjs.sh) | Machine-verifiable "done" gate (typecheck + lint + build). |
 | 🔌 **Plugin manifests** | [`.claude-plugin/`](.claude-plugin/) | Install as a native Claude Code plugin — no scripts to run. |
 | 📊 **Benchmark protocol** | [`BENCHMARKS.md`](BENCHMARKS.md) | Reproducible A/B/C measurement protocol + community results table. |
+| 🌍 **Portable pattern** | [`PATTERN.md`](PATTERN.md) + [`ports/AGENTS.md`](ports/AGENTS.md) | The CLI-agnostic spec and the matelot discipline in the AGENTS.md standard — usable by 25+ non-Claude tools. |
 | 🩺 **amiral doctor** | [`bin/amiral-doctor`](bin/amiral-doctor) | One command to check install, version, and routing config — catches the silent-fallback quota bleed. |
 | 🪝 **Verification hook** | [`hooks/`](hooks/) + [docs/hooks.md](docs/hooks.md) | Opt-in `SubagentStop` gate: workers can't finish while `./verify.sh` fails. Policies ask; hooks enforce. |
 
@@ -101,7 +102,7 @@ claude update   # Sonnet 5 needs v2.1.197+
 | `amiral` | `$AMIRAL_BRAIN` @ xhigh | **forced `$AMIRAL_HANDS`** | 🏆 Daily driver. Max planning capability, capped execution cost. |
 | `amiral-fine` | `$AMIRAL_BRAIN` @ xhigh | per-agent frontmatter (Sonnet/Haiku) | When you want Haiku on the grunt work. |
 | `amiral-ultra` | `$AMIRAL_BRAIN` + ultracode | forced `$AMIRAL_HANDS` | Big audits **only**. Then `/effort` → `ultracode`. 🔥 Quota incinerator. |
-| `matelot` | — | `$AMIRAL_HANDS` @ high | Everything that doesn't deserve the brain. |
+| `matelot` | — | `$AMIRAL_HANDS` @ high | Everything that doesn't deserve the brain. The matelot discipline itself is [portable to 25+ tools](ports/AGENTS.md). |
 
 Defaults: `AMIRAL_BRAIN=fable`, `AMIRAL_HANDS=sonnet`.
 
@@ -129,6 +130,15 @@ Inside a session:
 - Routing workers to Sonnet/Haiku means the token-heavy phase happens at a fraction of the cost, while the brain only pays for what it's uniquely good at: planning, decomposition, judgment, final review.
 
 Full math and sources: [docs/quota-math.md](docs/quota-math.md). Reproducible measurements: [BENCHMARKS.md](BENCHMARKS.md).
+
+## 🌍 Beyond Claude Code
+
+The **implementation** here is Claude Code (native routing primitives). The **pattern and the discipline are portable** — and partly predate this repo (Aider's architect/editor mode proved the two-tier split years ago):
+
+- [`PATTERN.md`](PATTERN.md) — the CLI-agnostic spec, with an implementation map: Aider (native `--architect` + `--editor-model`), OpenCode and Roo Code (per-agent/mode models), Codex CLI and Gemini CLI (two-session manual split), and the degraded-but-real protocol when your tool has no routing at all: *you* are the amiral.
+- [`ports/AGENTS.md`](ports/AGENTS.md) — **the matelot discipline**: the worker policy in the [AGENTS.md open standard](https://agents.md) (Linux Foundation, read by 25+ tools). The amiral is Claude Code-specific; the matelot is universal. Copy one file to your repo root and any of Codex, Aider, OpenCode, Cursor, Gemini CLI, Copilot, Zed or Warp inherits the discipline.
+
+One repo, three layers: universal pattern → portable discipline → Claude Code reference implementation.
 
 ## 🪶 Not a framework
 
@@ -168,7 +178,9 @@ Full honest comparison (Ruflo, Code Kit, Octopus, Maestro, opusplan): [docs/land
 - [x] Benchmark protocol
 - [ ] Seeded benchmark results (maintainer's own numbers — in progress)
 - [x] Optional `SubagentStop` hook: hard verification gate on worker results
+- [x] Portable pattern spec + AGENTS.md port (works beyond Claude Code)
 - [ ] Ralph-loop integration guide: lean routing inside autonomous loops
+- [ ] Community ports/ (OpenCode agent config, Roo mode set, Codex two-session script) — PRs open
 - [x] `amiral doctor`: one command to check install, version, and routing config
 
 ## 🤝 Contributing
