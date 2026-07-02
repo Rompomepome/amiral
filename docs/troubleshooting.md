@@ -3,8 +3,8 @@
 ## Workers are running on Fable, not Sonnet
 
 - Your Claude Code may not resolve the `sonnet` alias as a subagent
-  model. Edit `~/.claude/fable-aliases.sh` and use the full model ID
-  (e.g. `claude-sonnet-5`).
+  model. Set the full model ID via the fleet env var:
+  `export AMIRAL_HANDS=claude-sonnet-5` (add it to your rc file).
 - Your organization may enforce an `availableModels` allowlist; excluded
   values silently fall back to the inherited (main) model.
 - Check with `/agents` or read the transcript header of a spawned agent.
@@ -30,10 +30,10 @@ disable auto-switching in `/config`.
 That's the idempotence working: re-running never duplicates the import
 line in your CLAUDE.md.
 
-## I want permission prompts back
+## Are permission prompts on by default?
 
-Remove `--dangerously-skip-permissions` from the aliases in
-`~/.claude/fable-aliases.sh`. The routing works the same.
+Nothing to do — the shipped profiles already use default permission
+prompts. See docs/permissions.md if you customized yours.
 
 ## Sonnet 5 not found
 
