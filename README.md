@@ -4,7 +4,7 @@
 
 *Français ? Lisez le [README.fr.md](README.fr.md).*
 
-![CI](https://github.com/YOUR_USERNAME/amiral/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Rompomepome/amiral/actions/workflows/ci.yml/badge.svg)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-v2.1.197%2B-white?style=flat&labelColor=555)
 ![License](https://img.shields.io/badge/license-MIT-white?style=flat&labelColor=555)
 ![Pattern](https://img.shields.io/badge/pattern-orchestrator%2Fworkers-white?style=flat&labelColor=555)
@@ -59,6 +59,8 @@ The pattern outlives any single model. That's the point.
 | ✅ **verify.sh template** | [`templates/verify-nextjs.sh`](templates/verify-nextjs.sh) | Machine-verifiable "done" gate (typecheck + lint + build). |
 | 🔌 **Plugin manifests** | [`.claude-plugin/`](.claude-plugin/) | Install as a native Claude Code plugin — no scripts to run. |
 | 📊 **Benchmark protocol** | [`BENCHMARKS.md`](BENCHMARKS.md) | Reproducible A/B/C measurement protocol + community results table. |
+| 🩺 **amiral doctor** | [`bin/amiral-doctor`](bin/amiral-doctor) | One command to check install, version, and routing config — catches the silent-fallback quota bleed. |
+| 🪝 **Verification hook** | [`hooks/`](hooks/) + [docs/hooks.md](docs/hooks.md) | Opt-in `SubagentStop` gate: workers can't finish while `./verify.sh` fails. Policies ask; hooks enforce. |
 
 This repo **dogfoods itself**: clone it, open Claude Code inside, and the routing config in `.claude/` is live (CI keeps it in sync with the canonical `agents/` and `skills/`).
 
@@ -67,21 +69,21 @@ This repo **dogfoods itself**: clone it, open Claude Code inside, and the routin
 ### Option A — Plugin (native, auto-updates)
 
 ```
-/plugin marketplace add YOUR_USERNAME/amiral
+/plugin marketplace add Rompomepome/amiral
 /plugin install amiral@amiral-marketplace
 ```
 
 Gets you the agents and `/amiral:plan-ship`. Then add the shell profiles (the plugin system doesn't manage shell rc files):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/amiral/main/shell/amiral-profiles.sh -o ~/.claude/amiral-profiles.sh
+curl -fsSL https://raw.githubusercontent.com/Rompomepome/amiral/main/shell/amiral-profiles.sh -o ~/.claude/amiral-profiles.sh
 echo 'source ~/.claude/amiral-profiles.sh' >> ~/.zshrc && source ~/.zshrc
 ```
 
 ### Option B — Installer (everything, including the global policy)
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/amiral.git && cd amiral
+git clone https://github.com/Rompomepome/amiral.git && cd amiral
 ./install.sh
 echo 'source ~/.claude/amiral-profiles.sh' >> ~/.zshrc && source ~/.zshrc
 claude update   # Sonnet 5 needs v2.1.197+
@@ -113,7 +115,7 @@ Inside a session:
 
 ## ✅ Verify the routing actually works
 
-**Do this once.** If `sonnet` isn't resolved as a subagent model on your version, workers silently fall back to the main model — i.e. the expensive brain — and your quota bleeds anyway.
+**Run `amiral-doctor` first** — it checks the install and flags the risky configs. Then do this once. If `sonnet` isn't resolved as a subagent model on your version, workers silently fall back to the main model — i.e. the expensive brain — and your quota bleeds anyway.
 
 1. Launch `amiral` in a project.
 2. Ask for something that delegates ("implement X using the implementer agent").
@@ -127,6 +129,16 @@ Inside a session:
 - Routing workers to Sonnet/Haiku means the token-heavy phase happens at a fraction of the cost, while the brain only pays for what it's uniquely good at: planning, decomposition, judgment, final review.
 
 Full math and sources: [docs/quota-math.md](docs/quota-math.md). Reproducible measurements: [BENCHMARKS.md](BENCHMARKS.md).
+
+## 🪶 Not a framework
+
+The 2026 orchestration landscape is crowded with platforms — the leading one ships **250,000+ lines** of engine and is **API-only, blocked on Pro/Max subscriptions**. amiral takes the opposite bet:
+
+- **6 markdown files** and native Claude Code primitives. Nothing to adopt, no engine to break on the next release.
+- **Works on your subscription.** No API key required — it's just configuration.
+- When you truly need swarm topologies and consensus protocols, graduate to a framework — and take the amiral policy with you.
+
+Full honest comparison (Ruflo, Code Kit, Octopus, Maestro, opusplan): [docs/landscape.md](docs/landscape.md).
 
 ## 🆚 vs. the alternatives
 
@@ -155,9 +167,9 @@ Full math and sources: [docs/quota-math.md](docs/quota-math.md). Reproducible me
 - [x] `verify.sh` template — Next.js; Python & Rust welcome via PR
 - [x] Benchmark protocol
 - [ ] Seeded benchmark results (maintainer's own numbers — in progress)
-- [ ] Optional `SubagentStop` hook: hard verification gate on worker results
+- [x] Optional `SubagentStop` hook: hard verification gate on worker results
 - [ ] Ralph-loop integration guide: lean routing inside autonomous loops
-- [ ] `amiral doctor` script: one command to check version, routing resolution, and classifier reroute status
+- [x] `amiral doctor`: one command to check install, version, and routing config
 
 ## 🤝 Contributing
 

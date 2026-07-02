@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.0 — 2026-07-03
+- `amiral doctor`: automated fleet health check (install, version,
+  routing config, silent-fallback detection guidance).
+- Optional `SubagentStop` verification hook: workers cannot finish while
+  `./verify.sh` fails. Policies ask; hooks enforce. Opt-in, documented
+  caveats (docs/hooks.md).
+- `docs/landscape.md`: honest positioning vs Ruflo (API-only, blocked on
+  Pro/Max), ClaudeFast Code Kit, Claude Octopus, Maestro, opusplan.
+  "Not a framework" section in README.
+- Repository URLs finalized (github.com/Rompomepome/amiral).
+
+
 ## v0.2.0 — 2026-07-03
 - **Renamed to amiral** (was fable-lean): the pattern is
   orchestrator/worker, not one model. The admiral doesn't row.

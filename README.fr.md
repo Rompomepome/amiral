@@ -25,13 +25,13 @@ Défauts : `AMIRAL_BRAIN=fable`, `AMIRAL_HANDS=sonnet`. Le cerveau est **configu
 
 **Option plugin (natif) :**
 ```
-/plugin marketplace add YOUR_USERNAME/amiral
+/plugin marketplace add Rompomepome/amiral
 /plugin install amiral@amiral-marketplace
 ```
 
 **Option installeur (tout, y compris la politique globale) :**
 ```bash
-git clone https://github.com/YOUR_USERNAME/amiral.git && cd amiral && ./install.sh
+git clone https://github.com/Rompomepome/amiral.git && cd amiral && ./install.sh
 echo 'source ~/.claude/amiral-profiles.sh' >> ~/.zshrc && source ~/.zshrc
 claude update
 ```
@@ -40,7 +40,9 @@ Windows : profils PowerShell inclus (`shell/amiral-profiles.ps1`).
 
 Par défaut, prompts de permission standard (sûr par défaut) — le spectre complet vitesse/sécurité est dans [docs/permissions.md](docs/permissions.md). En session : `/plan-ship <feature>` déroule plan → délégation → vérification → revue.
 
-**À faire une fois** : vérifie dans `/agents` que les workers tournent sur Sonnet (pas le cerveau). Sinon : `export AMIRAL_HANDS=claude-sonnet-5`.
+**Pas un framework** : là où le leader du secteur pèse 250 000+ lignes et est bloqué sur les abonnements Pro/Max (API only), amiral c'est 6 fichiers markdown et des primitives natives — ça marche sur ton abonnement. Comparatif honnête : [docs/landscape.md](docs/landscape.md).
+
+**À faire une fois** : lance `amiral-doctor`, puis : vérifie dans `/agents` que les workers tournent sur Sonnet (pas le cerveau). Sinon : `export AMIRAL_HANDS=claude-sonnet-5`.
 
 Le détail complet (composants, principes, benchmarks, comparatif) est dans le [README.md](README.md).
 

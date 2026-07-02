@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Shell syntax
-        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh
+        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh bin/amiral-doctor hooks/subagent-verify.sh
 
       - name: Plugin manifests are valid JSON
         run: |
@@ -60,6 +60,13 @@ jobs:
           ! grep -q 'amiral-policy' "$HOME/.claude/CLAUDE.md"
           [ ! -f "$HOME/.claude/agents/implementer.md" ]
           [ ! -d "$HOME/.claude/skills/plan-ship" ]
+
+      - name: Doctor runs after install
+        run: |
+          export HOME=$(mktemp -d)
+          bash install.sh
+          bash "$HOME/.claude/amiral-doctor" || true   # 'claude' absent in CI: doctor must run, not crash
+          bash "$HOME/.claude/amiral-doctor" | grep -q "Summary:"
 
       - name: Profiles load in a shell
         run: bash -c 'source shell/amiral-profiles.sh && type amiral amiral-fine amiral-ultra matelot > /dev/null && echo functions defined'

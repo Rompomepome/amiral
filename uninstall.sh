@@ -10,7 +10,8 @@ rm -f "$CLAUDE_DIR/amiral-policy.md" \
       "$CLAUDE_DIR/agents/grunt.md" \
       "$CLAUDE_DIR/agents/reviewer.md" \
       "$CLAUDE_DIR/amiral-profiles.sh" \
-      "$CLAUDE_DIR/amiral-profiles.ps1"
+      "$CLAUDE_DIR/amiral-profiles.ps1" \
+      "$CLAUDE_DIR/amiral-doctor"
 rm -rf "$CLAUDE_DIR/skills/plan-ship"
 
 if [ -f "$CLAUDE_MD" ]; then

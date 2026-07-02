@@ -54,6 +54,11 @@ echo "  ok  amiral-profiles.sh"
 cp "$REPO_DIR/shell/amiral-profiles.ps1" "$CLAUDE_DIR/amiral-profiles.ps1"
 echo "  ok  amiral-profiles.ps1 (Windows/PowerShell)"
 
+# 5. Doctor
+cp "$REPO_DIR/bin/amiral-doctor" "$CLAUDE_DIR/amiral-doctor"
+chmod +x "$CLAUDE_DIR/amiral-doctor"
+echo "  ok  amiral-doctor"
+
 case "${SHELL:-}" in
   */zsh) RC_FILE="~/.zshrc" ;;
   */bash) RC_FILE="~/.bashrc" ;;
@@ -75,7 +80,8 @@ Final steps (2 min):
 2) Update Claude Code (Sonnet 5 needs v2.1.197+):
      claude update
 
-3) VERIFY the worker routing (once):
+3) Run the doctor, then VERIFY the worker routing (once):
+     amiral-doctor
      cd <a project> && amiral
      # ask for something that delegates, then check /agents or the
      # transcript: workers must run on Sonnet, not the brain model.

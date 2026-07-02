@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# amiral doctor — checks that the fleet is actually sailing.
+# Diagnoses the #1 silent failure: workers falling back to the expensive
+# brain because the hands model doesn't resolve.
+set -uo pipefail
+
+CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+PASS=0; WARN=0; FAIL=0
+ok()   { echo "  [ok]   $1"; PASS=$((PASS+1)); }
+warn() { echo "  [warn] $1"; WARN=$((WARN+1)); }
+fail() { echo "  [FAIL] $1"; FAIL=$((FAIL+1)); }
+
+echo "amiral doctor — the admiral doesn't row"
+echo
+
+echo "-- Claude Code --"
+if command -v claude >/dev/null 2>&1; then
+  V="$(claude --version 2>/dev/null | head -1 || true)"
+  ok "claude found: ${V:-unknown version}"
+  case "$V" in
+    *" 2.0."*|*" 2.1.0"*|*" 2.1.1"[0-8]*)
+      warn "version may predate v2.1.197 (Sonnet 5). Run: claude update" ;;
+  esac
+else
+  fail "'claude' not in PATH — install Claude Code first"
+fi
+
+echo "-- Install --"
+[ -f "$CLAUDE_DIR/amiral-policy.md" ] && ok "policy installed" || fail "policy missing — run ./install.sh (or /plugin install)"
+if [ -f "$CLAUDE_DIR/CLAUDE.md" ] && grep -q 'amiral-policy.md' "$CLAUDE_DIR/CLAUDE.md"; then
+  ok "policy imported in CLAUDE.md"
+else
+  warn "policy not imported in $CLAUDE_DIR/CLAUDE.md (plugin install covers agents/skills but not the global policy)"
+fi
+M=0; for a in implementer grunt reviewer; do [ -f "$CLAUDE_DIR/agents/$a.md" ] && M=$((M+1)); done
+if [ "$M" = "3" ]; then ok "3 worker agents installed"; else
+  # plugin path: agents live in the plugin cache, not ~/.claude/agents
+  warn "$M/3 agents in $CLAUDE_DIR/agents (fine if installed via /plugin — check /agents inside a session)"
+fi
+[ -f "$CLAUDE_DIR/amiral-profiles.sh" ] && ok "shell profiles present" || warn "shell profiles not in $CLAUDE_DIR (curl them from the repo)"
+
+echo "-- Shell --"
+for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
+  if [ -f "$rc" ] && grep -q 'amiral-profiles.sh' "$rc"; then ok "sourced in ${rc##*/}"; SOURCED=1; fi
+done
+[ "${SOURCED:-0}" = "1" ] || warn "profiles not sourced in ~/.zshrc or ~/.bashrc"
+
+echo "-- Fleet config --"
+echo "  brain: ${AMIRAL_BRAIN:-fable (default)}"
+echo "  hands: ${AMIRAL_HANDS:-sonnet (default)}"
+case "${AMIRAL_HANDS:-sonnet}" in
+  claude-*) ok "hands pinned to a full model ID (most robust)" ;;
+  *) warn "hands uses an alias ('${AMIRAL_HANDS:-sonnet}'). If workers show the brain model in /agents, pin it: export AMIRAL_HANDS=claude-sonnet-5" ;;
+esac
+
+echo "-- Live routing check (manual, one time) --"
+echo "  1. run:  amiral        (in any project)"
+echo "  2. ask:  'implement a tiny change using the implementer agent'"
+echo "  3. check /agents or the transcript: worker model must be the"
+echo "     HANDS model, not the brain. Silent fallback = quota bleed."
+echo "  note: Fable's safety classifiers can reroute a session to Opus"
+echo "  from the first message (workspace context). Debug: claude --safe-mode"
+
+echo
+echo "Summary: $PASS ok, $WARN warn, $FAIL fail"
+[ "$FAIL" = "0" ] || exit 1

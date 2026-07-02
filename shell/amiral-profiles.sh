@@ -37,3 +37,8 @@ matelot() {
   CLAUDE_CODE_EFFORT_LEVEL=high \
   claude --model "${AMIRAL_HANDS:-sonnet}" "$@"
 }
+
+# Fleet health check: install, routing config, live-check instructions.
+amiral-doctor() {
+  bash "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/amiral-doctor" "$@"
+}
