@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.1 — 2026-07-03
+- **July 7 cliff documented** (Anthropic official terms: Fable included
+  in subscriptions only through July 7; usage-credits only after, no
+  auto-fallback). README section, doctor warning, quota-math update.
+- Reframed economics: metered Fable brain + cheap hands is the
+  pattern's strongest case; `AMIRAL_BRAIN=opus` is the pure-subscription
+  fleet.
+- Nuanced the "works on your subscription" claim accordingly.
+
+
 ## v0.4.0 — 2026-07-03
 - **Three-layer split**: universal pattern -> portable discipline ->
   Claude Code reference implementation.

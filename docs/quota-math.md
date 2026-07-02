@@ -60,3 +60,18 @@ var so (3) takes over, letting `grunt` run on Haiku.
 One caveat: organization `availableModels` allowlists are checked; a
 value resolving to an excluded model silently falls back to inherit.
 This is why the README insists you verify the routing once.
+
+## Update — the July 7, 2026 cliff
+
+Per Anthropic's official redeployment terms, Fable 5 is included in
+Pro/Max/Team plans only through July 7; from July 8 it is usage-credits
+only ($10/$50 per MTok), with no automatic fallback when credits are off.
+
+This turns the routing math from quota into dollars. One planning pass
+reading 200k tokens and writing 40k costs $4.00 on Fable; the same
+tokens on Sonnet 5's intro rate ($2/$10, through Aug 31) cost $0.80.
+Now scale that to the *execution* phase — the dozens of write/test/fix
+loops — and the case makes itself: a metered brain is precisely the
+scenario where minimizing brain tokens stops being hygiene and becomes
+the bill. Alternatively, `AMIRAL_BRAIN=opus` keeps the whole fleet
+inside a subscription.

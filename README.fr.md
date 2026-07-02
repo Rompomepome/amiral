@@ -4,6 +4,10 @@
 
 *English? Read the [README.md](README.md).*
 
+## Le cliff du 7 juillet
+
+Conditions officielles du redéploiement : Fable 5 est inclus dans les plans Pro/Max/Team (50% des limites hebdo) **seulement jusqu'au 7 juillet 2026**. À partir du 8, chaque token Fable passe en usage credits ($10/$50 par MTok), sans bascule automatique. amiral est la réponse directe : cerveau Fable en credits + mains pas chères = tu ne paies le tarif frontier que pour la planification. Ou `AMIRAL_BRAIN=opus amiral` pour rester 100% dans ton abonnement.
+
 ## Le problème
 
 Les modèles frontier dans Claude Code sont le moyen le plus rapide de cramer une fenêtre d'usage : fenêtre de 5 h consommée en ~7 min (Fable + ultracode, rapport communautaire), 7 agents parallèles spawnés pour une petite refacto ([issue #66867](https://github.com/anthropics/claude-code/issues/66867)). Et par défaut, chaque subagent hérite du modèle principal : orchestrer naïvement = tous les workers facturés au prix frontier.

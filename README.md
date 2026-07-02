@@ -24,6 +24,18 @@ Frontier models in Claude Code are the fastest way to burn a usage window:
 
 You don't need frontier intelligence to rename 40 imports. You need it to *plan* the rename and *verify* it happened. The admiral commands the fleet; the admiral doesn't row.
 
+## 💸 The July 7 cliff (why this matters right now)
+
+Anthropic's [official redeployment terms](https://www.anthropic.com/news/redeploying-fable-5): Fable 5 is included in Pro/Max/Team plans (up to 50% of weekly limits) **only through July 7, 2026**. From July 8, every Fable token is billed through **usage credits at $10/$50 per MTok** — and there is no automatic fallback: if credits aren't enabled, access simply stops.
+
+This changes the economics from *quota hygiene* to *direct money*:
+
+- **Fable brain (credits) + cheap hands** — amiral minimizes brain tokens *by construction*; you pay frontier price only for planning, judgment and review. This is the pattern's strongest use case yet.
+- **`AMIRAL_BRAIN=opus amiral`** — the pure-subscription fleet: Opus brain stays inside your plan, zero credits needed.
+- Hands are cheaper than ever: Sonnet 5 launched at **$2/$10 intro pricing through Aug 31**.
+
+Either way, the fleet sails. That's what `AMIRAL_BRAIN` is for.
+
 ## 💡 The pattern
 
 ![amiral architecture](assets/architecture.svg)
@@ -145,7 +157,7 @@ One repo, three layers: universal pattern → portable discipline → Claude Cod
 The 2026 orchestration landscape is crowded with platforms — the leading one ships **250,000+ lines** of engine and is **API-only, blocked on Pro/Max subscriptions**. amiral takes the opposite bet:
 
 - **6 markdown files** and native Claude Code primitives. Nothing to adopt, no engine to break on the next release.
-- **Works on your subscription.** No API key required — it's just configuration.
+- **Works on your subscription.** No API key required — it's just configuration. (With a Fable brain after July 7, only the *brain* needs usage credits — the whole point is minimizing those tokens. Or run `AMIRAL_BRAIN=opus` and stay fully inside your plan.)
 - When you truly need swarm topologies and consensus protocols, graduate to a framework — and take the amiral policy with you.
 
 Full honest comparison (Ruflo, Code Kit, Octopus, Maestro, opusplan): [docs/landscape.md](docs/landscape.md).
