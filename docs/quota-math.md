@@ -54,7 +54,7 @@ Subagent model resolution order (official docs):
 3. agent frontmatter `model:`
 4. main conversation model (inherit)
 
-`fable-lean` uses (1) as a hard cost ceiling. `fable-fine` drops the env
+`amiral` uses (1) as a hard cost ceiling. `fable-fine` drops the env
 var so (3) takes over, letting `grunt` run on Haiku.
 
 One caveat: organization `availableModels` allowlists are checked; a

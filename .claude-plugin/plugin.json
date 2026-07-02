@@ -1,0 +1,11 @@
+{
+  "name": "amiral",
+  "version": "0.2.0",
+  "description": "The admiral doesn't row. Orchestrator/worker model routing for Claude Code: expensive brain plans and verifies, cheap hands execute.",
+  "author": {
+    "name": "Romain Poulard",
+    "url": "https://github.com/YOUR_USERNAME"
+  },
+  "repository": "https://github.com/YOUR_USERNAME/amiral",
+  "keywords": ["model-routing", "subagents", "quota", "orchestrator", "fable"]
+}

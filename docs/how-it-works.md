@@ -3,8 +3,8 @@
 ## The three layers
 
 **Layer 1 — Persistent memory (the policy).** `install.sh` copies the
-repo's `CLAUDE.md` to `~/.claude/fable-lean-policy.md` and adds one
-`@fable-lean-policy.md` import line to your global `~/.claude/CLAUDE.md`.
+repo's `CLAUDE.md` to `~/.claude/amiral-policy.md` and adds one
+`@amiral-policy.md` import line to your global `~/.claude/CLAUDE.md`.
 Claude Code reads it at every session start, in every project. It
 teaches the orchestrator role, the fan-out discipline, and the
 verification gates. It is deliberately model-agnostic: it applies even
@@ -22,7 +22,7 @@ The main agent reads the `description` field to decide when to
 delegate — write descriptions like tool descriptions.
 
 **Layer 3 — Launch profiles (the aliases).** The model choice lives
-here, not in the policy. `fable-lean` sets
+here, not in the policy. `amiral` sets
 `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` (highest precedence: a hard cost
 ceiling whatever the orchestrator spawns) plus
 `CLAUDE_CODE_EFFORT_LEVEL=xhigh`. `fable-fine` drops the env var so the

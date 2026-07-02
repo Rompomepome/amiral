@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: '0 6 * * 1'   # weekly freshness run
 
 jobs:
   installer:
@@ -11,26 +13,36 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Shell syntax
-        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/fable-aliases.sh
+        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh
+
+      - name: Plugin manifests are valid JSON
+        run: |
+          python3 -c "import json; json.load(open('.claude-plugin/plugin.json'))"
+          python3 -c "import json; json.load(open('.claude-plugin/marketplace.json'))"
+
+      - name: Dogfood mirror in sync with canonical
+        run: |
+          diff -r agents .claude/agents
+          diff -r skills .claude/skills
 
       - name: Fresh install
         run: |
           export HOME=$(mktemp -d)
           bash install.sh
-          test -f "$HOME/.claude/fable-lean-policy.md"
+          test -f "$HOME/.claude/amiral-policy.md"
           test -f "$HOME/.claude/agents/implementer.md"
           test -f "$HOME/.claude/agents/grunt.md"
           test -f "$HOME/.claude/agents/reviewer.md"
           test -f "$HOME/.claude/skills/plan-ship/SKILL.md"
-          test -f "$HOME/.claude/fable-aliases.sh"
-          test -f "$HOME/.claude/fable-profiles.ps1"
-          grep -q '@fable-lean-policy.md' "$HOME/.claude/CLAUDE.md"
+          test -f "$HOME/.claude/amiral-profiles.sh"
+          test -f "$HOME/.claude/amiral-profiles.ps1"
+          grep -q '@amiral-policy.md' "$HOME/.claude/CLAUDE.md"
 
       - name: Idempotence (double install, no duplicate import)
         run: |
           export HOME=$(mktemp -d)
           bash install.sh && bash install.sh
-          [ "$(grep -c 'fable-lean-policy.md' "$HOME/.claude/CLAUDE.md")" = "1" ]
+          [ "$(grep -c 'amiral-policy.md' "$HOME/.claude/CLAUDE.md")" = "1" ]
 
       - name: Preserves existing CLAUDE.md
         run: |
@@ -39,16 +51,19 @@ jobs:
           echo "# my precious existing memory" > "$HOME/.claude/CLAUDE.md"
           bash install.sh
           grep -q "my precious existing memory" "$HOME/.claude/CLAUDE.md"
-          grep -q '@fable-lean-policy.md' "$HOME/.claude/CLAUDE.md"
+          grep -q '@amiral-policy.md' "$HOME/.claude/CLAUDE.md"
 
       - name: Clean uninstall
         run: |
           export HOME=$(mktemp -d)
           bash install.sh && bash uninstall.sh
-          ! grep -q 'fable-lean-policy' "$HOME/.claude/CLAUDE.md"
+          ! grep -q 'amiral-policy' "$HOME/.claude/CLAUDE.md"
           [ ! -f "$HOME/.claude/agents/implementer.md" ]
           [ ! -d "$HOME/.claude/skills/plan-ship" ]
 
+      - name: Profiles load in a shell
+        run: bash -c 'source shell/amiral-profiles.sh && type amiral amiral-fine amiral-ultra matelot > /dev/null && echo functions defined'
+
       - name: No dangerous flags shipped
         run: |
-          ! grep -R -- "--dangerously-skip-permissions" shell/ install.sh
+          ! grep -R -- "--dangerously-skip-permissions" shell/ install.sh agents/ skills/

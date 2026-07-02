@@ -1,103 +1,107 @@
-# fable-lean
+# ⚓ amiral
 
-**Big brain, cheap hands.** Quota-optimized model routing for Claude Code: run a frontier model (Fable 5) as the *orchestrator* and delegate execution to cheaper workers (Sonnet / Haiku).
+**The admiral doesn't row.** Orchestrator/worker model routing for Claude Code: an expensive brain (Fable 5, Opus) plans, delegates and verifies — cheap hands (Sonnet, Haiku) do the token-heavy execution.
 
 *Français ? Lisez le [README.fr.md](README.fr.md).*
 
-![CI](https://github.com/YOUR_USERNAME/fable-lean/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/YOUR_USERNAME/amiral/actions/workflows/ci.yml/badge.svg)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-v2.1.197%2B-white?style=flat&labelColor=555)
 ![License](https://img.shields.io/badge/license-MIT-white?style=flat&labelColor=555)
-![Model routing](https://img.shields.io/badge/pattern-orchestrator%2Fworkers-white?style=flat&labelColor=555)
+![Pattern](https://img.shields.io/badge/pattern-orchestrator%2Fworkers-white?style=flat&labelColor=555)
 
 > [!TIP]
-> Jump to [**How to Use**](#-how-to-use) if you just want the 2-minute setup.
+> Jump to [**How to Use**](#-how-to-use) for the 2-minute setup — installer or plugin, your pick.
 
 ---
 
 ## 🧠 The problem
 
-Fable 5 is the most capable model in Claude Code — and the most expensive way to burn a usage window:
+Frontier models in Claude Code are the fastest way to burn a usage window:
 
-- Fable + `ultracode` has been reported to consume a **full 5-hour usage window in ~7 minutes** on a codebase-wide audit ([r/ClaudeAI](https://www.reddit.com/r/ClaudeAI/)).
-- Fable in ultracode mode has been observed **spawning 7 parallel agents for a single small refactoring task** — disproportionate quota consumption vs. Opus on the same task ([anthropics/claude-code#66867](https://github.com/anthropics/claude-code/issues/66867)).
-- Every subagent inherits the main model by default. Orchestrate with Fable naively and **every worker is also Fable**.
+- Fable + `ultracode` has been reported to consume a **full 5-hour usage window in ~7 minutes** on a codebase-wide audit.
+- Fable in ultracode mode has been observed **spawning 7 parallel agents for a single small refactoring task** ([anthropics/claude-code#66867](https://github.com/anthropics/claude-code/issues/66867)).
+- Every subagent inherits the main model by default. Orchestrate with a frontier model naively and **every worker bills at frontier price**.
 
-You don't need frontier-model intelligence to rename 40 imports. You need it to *plan* the rename and *verify* it happened.
+You don't need frontier intelligence to rename 40 imports. You need it to *plan* the rename and *verify* it happened. The admiral commands the fleet; the admiral doesn't row.
 
 ## 💡 The pattern
 
-![fable-lean architecture](assets/architecture.svg)
-
-<details>
-<summary>ASCII version</summary>
-
-```
-                          ┌─────────────────────────┐
-                          │   FABLE 5  (xhigh)      │
-                          │   plans · delegates ·   │
-                          │   verifies · reviews    │
-                          └───────────┬─────────────┘
-              ┌───────────────────────┼───────────────────────┐
-              ▼                       ▼                       ▼
-   ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐
-   │ implementer       │  │ grunt             │  │ reviewer          │
-   │ model: sonnet     │  │ model: haiku      │  │ model: sonnet     │
-   │ writes features   │  │ mechanical bulk   │  │ fresh-context     │
-   │ vs a valid plan   │  │ work, low effort  │  │ review, read-only │
-   └───────────────────┘  └───────────────────┘  └───────────────────┘
-```
-
-</details>
+![amiral architecture](assets/architecture.svg)
 
 Three levers, combined:
 
-1. **`CLAUDE_CODE_SUBAGENT_MODEL`** — hard-forces every subagent onto a cheap model, whatever Fable decides to spawn. Highest precedence in the [resolution order](https://code.claude.com/docs/en/sub-agents).
+1. **`CLAUDE_CODE_SUBAGENT_MODEL`** — hard-forces every subagent onto a cheap model, whatever the brain decides to spawn. Highest precedence in the [resolution order](https://code.claude.com/docs/en/sub-agents).
 2. **Per-agent `model:` frontmatter** — fine-grained routing: Sonnet for real implementation, Haiku for mechanical work.
 3. **A memory policy (`CLAUDE.md`)** — teaches the orchestrator to delegate, to *not* fan out 7 agents on a 1-agent task, and to verify (build/typecheck/lint) before claiming "done".
+
+## ⛵ Model-agnostic by design
+
+The brain is **configurable, not hardcoded** — because models get suspended (Fable already was, once), renamed, and superseded:
+
+```bash
+amiral                      # brain = fable (default), hands = sonnet
+AMIRAL_BRAIN=opus amiral    # same fleet, Opus brain — one env var, zero edits
+AMIRAL_HANDS=claude-sonnet-5 amiral   # pin an exact worker model ID
+```
+
+The pattern outlives any single model. That's the point.
 
 ## 📦 What's inside
 
 | Component | Location | What it does |
 | --- | --- | --- |
-| 🅐 **implementer** | [`.claude/agents/implementer.md`](.claude/agents/implementer.md) | Implements features against a validated plan. `model: sonnet`. Full write access. |
-| 🅐 **grunt** | [`.claude/agents/grunt.md`](.claude/agents/grunt.md) | Mass mechanical work (renames, boilerplate, find/replace migrations). `model: haiku`, `effort: low`. |
-| 🅐 **reviewer** | [`.claude/agents/reviewer.md`](.claude/agents/reviewer.md) | Fresh-context code review right after implementation. Read-only tools, prioritized report. |
-| 🅢 **/plan-ship** | [`.claude/skills/plan-ship/SKILL.md`](.claude/skills/plan-ship/SKILL.md) | One command: plan → delegate → verify → review → summary. Never commits without your OK. |
-| 📜 **Routing policy** | [`CLAUDE.md`](CLAUDE.md) | The persistent memory: orchestrator role, anti-fan-out discipline, mandatory verification. |
-| ⚡ **Shell profiles** | [`shell/fable-aliases.sh`](shell/fable-aliases.sh) | `fable-lean`, `fable-fine`, `fable-ultra`, `sonnet-fast` — one word to launch each mode. Safe permission defaults. |
-| 🪟 **PowerShell profiles** | [`shell/fable-profiles.ps1`](shell/fable-profiles.ps1) | Same four profiles for Windows. |
-| ✅ **verify.sh template** | [`templates/verify-nextjs.sh`](templates/verify-nextjs.sh) | Machine-verifiable "done" gate (typecheck + lint + build) — the plan's completion criterion. |
-| 🔧 **Installer** | [`install.sh`](install.sh) | Idempotent. Copies everything to `~/.claude/`, backs up your existing `CLAUDE.md`, never overwrites. |
+| 🅐 **implementer** | [`agents/implementer.md`](agents/implementer.md) | Implements features against a validated plan. `model: sonnet`. Full write access. |
+| 🅐 **grunt** | [`agents/grunt.md`](agents/grunt.md) | Mass mechanical work (renames, boilerplate, migrations). `model: haiku`, `effort: low`. |
+| 🅐 **reviewer** | [`agents/reviewer.md`](agents/reviewer.md) | Fresh-context review right after implementation. Read-only tools, prioritized report. |
+| 🅢 **/plan-ship** | [`skills/plan-ship/SKILL.md`](skills/plan-ship/SKILL.md) | One command: plan → delegate → verify → review → summary. Never commits without your OK. |
+| 📜 **Routing policy** | [`CLAUDE.md`](CLAUDE.md) | Persistent memory: orchestrator role, anti-fan-out discipline, mandatory verification. |
+| ⚡ **Fleet profiles** | [`shell/`](shell/) | `amiral`, `amiral-fine`, `amiral-ultra`, `matelot` — bash/zsh **and** PowerShell. Safe permission defaults. |
+| ✅ **verify.sh template** | [`templates/verify-nextjs.sh`](templates/verify-nextjs.sh) | Machine-verifiable "done" gate (typecheck + lint + build). |
+| 🔌 **Plugin manifests** | [`.claude-plugin/`](.claude-plugin/) | Install as a native Claude Code plugin — no scripts to run. |
+| 📊 **Benchmark protocol** | [`BENCHMARKS.md`](BENCHMARKS.md) | Reproducible A/B/C measurement protocol + community results table. |
 
-This repo **dogfoods itself**: clone it, open Claude Code inside, and the routing config in `.claude/` is live.
+This repo **dogfoods itself**: clone it, open Claude Code inside, and the routing config in `.claude/` is live (CI keeps it in sync with the canonical `agents/` and `skills/`).
 
 ## ⚡ How to Use
 
-```bash
-git clone https://github.com/YOUR_USERNAME/fable-lean.git
-cd fable-lean
-./install.sh
+### Option A — Plugin (native, auto-updates)
 
-# load the aliases
-echo 'source ~/.claude/fable-aliases.sh' >> ~/.zshrc && source ~/.zshrc
-
-# make sure Claude Code is recent (Sonnet 5 needs v2.1.197+)
-claude update
+```
+/plugin marketplace add YOUR_USERNAME/amiral
+/plugin install amiral@amiral-marketplace
 ```
 
-**Windows (PowerShell):** run `./install.sh` from Git Bash or WSL, then add `. "$HOME\.claude\fable-profiles.ps1"` to your `$PROFILE`.
+Gets you the agents and `/amiral:plan-ship`. Then add the shell profiles (the plugin system doesn't manage shell rc files):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/amiral/main/shell/amiral-profiles.sh -o ~/.claude/amiral-profiles.sh
+echo 'source ~/.claude/amiral-profiles.sh' >> ~/.zshrc && source ~/.zshrc
+```
+
+### Option B — Installer (everything, including the global policy)
+
+```bash
+git clone https://github.com/YOUR_USERNAME/amiral.git && cd amiral
+./install.sh
+echo 'source ~/.claude/amiral-profiles.sh' >> ~/.zshrc && source ~/.zshrc
+claude update   # Sonnet 5 needs v2.1.197+
+```
+
+**Windows (PowerShell):** run `./install.sh` from Git Bash or WSL, then add `. "$HOME\.claude\amiral-profiles.ps1"` to your `$PROFILE`.
 
 > [!NOTE]
 > Profiles ship with Claude Code's **default permission prompts** — safe by default. Want fewer prompts? Read [docs/permissions.md](docs/permissions.md) for the full speed/safety spectrum (allowlists, `acceptEdits`, and why we don't ship YOLO mode).
 
-Then, in any project:
+### The fleet
 
 | Command | Brain | Workers | When |
 | --- | --- | --- | --- |
-| `fable-lean` | Fable 5 @ xhigh | **forced Sonnet** | 🏆 Daily driver. Max planning capability, capped execution cost. |
-| `fable-fine` | Fable 5 @ xhigh | per-agent frontmatter (Sonnet/Haiku) | When you want Haiku doing the grunt work. |
-| `fable-ultra` | Fable 5 + ultracode | forced Sonnet | Big audits **only**. Then type `/effort` → `ultracode`. 🔥 Quota incinerator. |
-| `sonnet-fast` | Sonnet @ high | inherit | Everything that doesn't deserve Fable. |
+| `amiral` | `$AMIRAL_BRAIN` @ xhigh | **forced `$AMIRAL_HANDS`** | 🏆 Daily driver. Max planning capability, capped execution cost. |
+| `amiral-fine` | `$AMIRAL_BRAIN` @ xhigh | per-agent frontmatter (Sonnet/Haiku) | When you want Haiku on the grunt work. |
+| `amiral-ultra` | `$AMIRAL_BRAIN` + ultracode | forced `$AMIRAL_HANDS` | Big audits **only**. Then `/effort` → `ultracode`. 🔥 Quota incinerator. |
+| `matelot` | — | `$AMIRAL_HANDS` @ high | Everything that doesn't deserve the brain. |
+
+Defaults: `AMIRAL_BRAIN=fable`, `AMIRAL_HANDS=sonnet`.
 
 Inside a session:
 
@@ -105,44 +109,59 @@ Inside a session:
 /plan-ship add JWT refresh-token rotation to the auth middleware
 ```
 
-…and the orchestrator plans, hands the implementation to `implementer`, bulk edits to `grunt`, verification gates the result, and `reviewer` reads the diff with fresh eyes before you get a summary.
+…and the orchestrator plans, hands implementation to `implementer`, bulk edits to `grunt`, verification gates the result, and `reviewer` reads the diff with fresh eyes before you get a summary.
 
 ## ✅ Verify the routing actually works
 
-**Do this once.** If `sonnet` isn't resolved as a subagent model on your version, workers silently fall back to the main model — i.e. Fable — and your quota bleeds anyway.
+**Do this once.** If `sonnet` isn't resolved as a subagent model on your version, workers silently fall back to the main model — i.e. the expensive brain — and your quota bleeds anyway.
 
-1. Launch `fable-lean` in a project.
+1. Launch `amiral` in a project.
 2. Ask for something that delegates ("implement X using the implementer agent").
-3. Check `/agents` or the transcript: workers must show **Sonnet**, not Fable.
-4. If not: edit `~/.claude/fable-aliases.sh` and replace `sonnet` with the full model ID (e.g. `claude-sonnet-5`).
+3. Check `/agents` or the transcript: workers must show **Sonnet**, not the brain.
+4. If not: `export AMIRAL_HANDS=claude-sonnet-5` (full model ID).
 
 ## 🧮 Why this saves real money
 
 - Fable 5 is priced at **$10 / MTok input, $50 / MTok output** — the execution phase of a feature (dozens of file writes, test runs, retries) is where the tokens go.
 - Subagent-heavy workflows can consume **~7× the tokens** of a single-thread session, since each worker holds its own context window.
-- Routing workers to Sonnet/Haiku means the token-heavy phase happens at a fraction of the cost, while Fable only pays for what it's uniquely good at: planning, decomposition, judgment, final review.
+- Routing workers to Sonnet/Haiku means the token-heavy phase happens at a fraction of the cost, while the brain only pays for what it's uniquely good at: planning, decomposition, judgment, final review.
 
-Full math and sources: [docs/quota-math.md](docs/quota-math.md).
+Full math and sources: [docs/quota-math.md](docs/quota-math.md). Reproducible measurements: [BENCHMARKS.md](BENCHMARKS.md).
+
+## 🆚 vs. the alternatives
+
+| Approach | What it optimizes | Trade-off |
+| --- | --- | --- |
+| **amiral** | Brain plans/verifies, workers execute cheap | You verify routing once; slight orchestration overhead |
+| `opusplan` (built-in) | Opus in plan mode, Sonnet execution | Only plan-mode handoff; no Fable, no worker specialization, no policy |
+| Naive Fable + ultracode | Raw capability, zero setup | Observed 7-agent fan-outs; window gone in minutes |
+| Pure Sonnet | Cost | No frontier-grade planning/judgment on hard tasks |
+| Manual `/model` switching | Control | You are the router; forgets happen, quota bleeds |
 
 ## 🛡️ Design principles
 
-1. **The policy is model-agnostic.** Delegation discipline + verification gates are just good practice — they hold even in `sonnet-fast` mode. Model choice lives in the alias, not the policy.
-2. **Anti-fan-out is explicit.** The policy caps parallel workers at 3–4 and states "a small refactor = 1 agent, not 7", directly countering the observed over-spawning behavior.
-3. **"Done" means verified.** Build + typecheck + lint (+ tests when present) gate every completion claim. UI changes require render verification, not just green tests.
-4. **Never destructive.** The installer backs up `CLAUDE.md`, imports via `@`-reference instead of overwriting, and is safe to re-run.
+1. **The policy is model-agnostic.** Delegation discipline + verification gates hold even in `matelot` mode. Model choice lives in the profiles, not the policy.
+2. **Anti-fan-out is explicit.** Parallel workers capped at 3–4; "a small refactor = 1 agent, not 7."
+3. **"Done" means verified.** Build + typecheck + lint (+ tests when present) gate every completion claim. UI changes require render verification.
+4. **Never destructive.** Installer backs up `CLAUDE.md`, imports via `@`-reference, safe to re-run. CI proves it.
 5. **No auto-commit.** The orchestrator never commits or pushes without an explicit human OK.
-6. **Safe by default, fast by opt-in.** No `--dangerously-skip-permissions` shipped — CI enforces it. The permission spectrum is documented so *you* choose the trade-off knowingly.
+6. **Safe by default, fast by opt-in.** No permission-bypass flag shipped — CI enforces it. The spectrum is documented so *you* choose knowingly.
+7. **Survive the models.** Brains get suspended and renamed; `AMIRAL_BRAIN`/`AMIRAL_HANDS` mean the fleet sails on.
 
 ## 🗺️ Roadmap
 
-- [x] `verify.sh` template — Next.js ([templates/](templates/)); Python & Rust welcome via PR
-- [ ] Optional [Ralph-loop](https://github.com/anthropics/claude-code/tree/main/plugins/ralph-wiggum) integration: lean routing inside autonomous loops
-- [ ] Plugin packaging for one-command install via marketplace
+- [x] Plugin packaging (marketplace install)
 - [x] Windows (PowerShell) profiles
+- [x] `verify.sh` template — Next.js; Python & Rust welcome via PR
+- [x] Benchmark protocol
+- [ ] Seeded benchmark results (maintainer's own numbers — in progress)
+- [ ] Optional `SubagentStop` hook: hard verification gate on worker results
+- [ ] Ralph-loop integration guide: lean routing inside autonomous loops
+- [ ] `amiral doctor` script: one command to check version, routing resolution, and classifier reroute status
 
 ## 🤝 Contributing
 
-PRs welcome — especially real-world quota numbers (before/after), new worker agent definitions, and stack-specific policies. Open an issue with your use case first if it's a big change.
+The most valuable PR is a **benchmark row** ([BENCHMARKS.md](BENCHMARKS.md) protocol, "Quota report" issue template). Also welcome: worker agents, stack policies, fixes tracking Claude Code releases. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 📄 License
 
@@ -152,4 +171,4 @@ PRs welcome — especially real-world quota numbers (before/after), new worker a
 
 **Disclaimer:** community project, not affiliated with or endorsed by Anthropic. "Claude", "Claude Code" and model names are Anthropic's.
 
-*Inspired by the structure of [claude-code-best-practice](https://github.com/shanraisshan/claude-code-best-practice). Built from the official [subagents](https://code.claude.com/docs/en/sub-agents) and [model configuration](https://code.claude.com/docs/en/model-config) docs.*
+*Part of a small fleet of tools: ⛵ Voile (sovereign AI deployment) · 🗼 Phare (federated agent intelligence) · ⚓ amiral (this repo). Inspired by the structure of [claude-code-best-practice](https://github.com/shanraisshan/claude-code-best-practice).*

@@ -1,6 +1,6 @@
 # Permissions: choosing your speed/safety trade-off
 
-fable-lean ships with Claude Code's **default permission prompts**. That
+amiral ships with Claude Code's **default permission prompts**. That
 is deliberate: this repo's whole philosophy is "verified, not trusted",
 and that applies to the harness too. Here is the full spectrum, from
 safest to fastest, so you can make an informed choice.
@@ -41,7 +41,7 @@ Auto-accepts file edits, still prompts for shell commands. A good middle
 ground for pure-implementation sessions:
 
 ```bash
-alias fable-lean='CLAUDE_CODE_EFFORT_LEVEL=xhigh CLAUDE_CODE_SUBAGENT_MODEL=sonnet claude --model fable --permission-mode acceptEdits'
+alias amiral='CLAUDE_CODE_EFFORT_LEVEL=xhigh CLAUDE_CODE_SUBAGENT_MODEL=sonnet claude --model "${AMIRAL_BRAIN:-fable}" --permission-mode acceptEdits "$@"; }
 ```
 
 ## 4. `--dangerously-skip-permissions` (YOLO mode)
