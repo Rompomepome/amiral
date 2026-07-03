@@ -1,29 +1,32 @@
 # --- amiral : the admiral doesn't row (PowerShell) ---
 # Install: add to your PowerShell profile ($PROFILE):
 #   . "$HOME\.claude\amiral-profiles.ps1"
-# Configurable fleet: $env:AMIRAL_BRAIN (default fable),
-#                     $env:AMIRAL_HANDS (default sonnet).
+# Fleet: $env:AMIRAL_BRAIN (default fable), $env:AMIRAL_HANDS (default sonnet).
+# Uses --effort (session level, overridable by agent frontmatter) rather
+# than CLAUDE_CODE_EFFORT_LEVEL, which would force workers to xhigh.
 # Permissions: default prompts (safe). See docs/permissions.md.
 
-function Invoke-AmiralSession {
-    param([string]$Effort, [string]$ForceHands, [string[]]$Rest)
-    $brain = if ($env:AMIRAL_BRAIN) { $env:AMIRAL_BRAIN } else { "fable" }
-    $hands = if ($env:AMIRAL_HANDS) { $env:AMIRAL_HANDS } else { "sonnet" }
-    if ($Effort)     { $env:CLAUDE_CODE_EFFORT_LEVEL = $Effort }
-    if ($ForceHands) { $env:CLAUDE_CODE_SUBAGENT_MODEL = $hands }
-    try { claude --model $brain @Rest }
-    finally {
-        Remove-Item Env:CLAUDE_CODE_EFFORT_LEVEL, Env:CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue
-    }
+function Get-AmiralBrain { if ($env:AMIRAL_BRAIN) { $env:AMIRAL_BRAIN } else { "fable" } }
+function Get-AmiralHands { if ($env:AMIRAL_HANDS) { $env:AMIRAL_HANDS } else { "sonnet" } }
+
+function amiral {
+    $env:CLAUDE_CODE_SUBAGENT_MODEL = Get-AmiralHands
+    try { claude --model (Get-AmiralBrain) --effort xhigh @args }
+    finally { Remove-Item Env:CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue }
 }
 
-function amiral       { Invoke-AmiralSession -Effort "xhigh" -ForceHands "yes" -Rest $args }
-function amiral-fine  { Invoke-AmiralSession -Effort "xhigh" -Rest $args }
+function amiral-fine {
+    claude --model (Get-AmiralBrain) --effort xhigh @args
+}
+
 # Launch, then /effort -> ultracode. QUOTA INCINERATOR - big audits only.
-function amiral-ultra { Invoke-AmiralSession -ForceHands "yes" -Rest $args }
+# Verify in /agents that workflow workers honor the hands model.
+function amiral-ultra {
+    $env:CLAUDE_CODE_SUBAGENT_MODEL = Get-AmiralHands
+    try { claude --model (Get-AmiralBrain) @args }
+    finally { Remove-Item Env:CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue }
+}
+
 function matelot {
-    $hands = if ($env:AMIRAL_HANDS) { $env:AMIRAL_HANDS } else { "sonnet" }
-    $env:CLAUDE_CODE_EFFORT_LEVEL = "high"
-    try { claude --model $hands @args }
-    finally { Remove-Item Env:CLAUDE_CODE_EFFORT_LEVEL -ErrorAction SilentlyContinue }
+    claude --model (Get-AmiralHands) --effort high @args
 }

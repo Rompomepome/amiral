@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.2 — 2026-07-03
+- **Fix a silent token leak in our own profiles**: CLAUDE_CODE_EFFORT_LEVEL
+  takes precedence over agent frontmatter, forcing every worker
+  (including the low-effort grunt) to think at xhigh. Profiles now use
+  the `--effort` flag (session level, overridable by frontmatter):
+  brain at xhigh, grunt at low, as designed. Fixed in bash and
+  PowerShell profiles, documented in how-it-works.
+- amiral-ultra: caution note — verify in /agents that dynamic-workflow
+  workers honor the hands model before trusting a big run.
+
+
 ## v0.4.1 — 2026-07-03
 - **July 7 cliff documented** (Anthropic official terms: Fable included
   in subscriptions only through July 7; usage-credits only after, no

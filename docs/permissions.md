@@ -41,7 +41,10 @@ Auto-accepts file edits, still prompts for shell commands. A good middle
 ground for pure-implementation sessions:
 
 ```bash
-alias amiral='CLAUDE_CODE_EFFORT_LEVEL=xhigh CLAUDE_CODE_SUBAGENT_MODEL=sonnet claude --model "${AMIRAL_BRAIN:-fable}" --permission-mode acceptEdits "$@"; }
+amiral() {
+  CLAUDE_CODE_SUBAGENT_MODEL="${AMIRAL_HANDS:-sonnet}" \
+  claude --model "${AMIRAL_BRAIN:-fable}" --effort xhigh --permission-mode acceptEdits "$@"
+}
 ```
 
 ## 4. `--dangerously-skip-permissions` (YOLO mode)
