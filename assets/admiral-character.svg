@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 520" width="460" height="520">
+  <!-- Amiral original "Le Vieux" — loup de mer : barbe grise, vareuse marine
+       a epaulettes dorees, casquette a ancre, pipe. Aplats + trait encre. -->
+  <defs>
+    <clipPath id="port"><circle cx="230" cy="260" r="218"/></clipPath>
+  </defs>
+
+  <!-- Hublot : fond ciel + mer -->
+  <g clip-path="url(#port)">
+    <rect x="0" y="0" width="460" height="520" fill="#cfe3ea"/>
+    <!-- vagues stylisees -->
+    <path d="M-20 388 Q 30 368 80 388 T 180 388 T 280 388 T 380 388 T 480 388 L 480 520 L -20 520 Z" fill="#1d3b5a"/>
+    <path d="M-20 412 Q 30 394 80 412 T 180 412 T 280 412 T 380 412 T 480 412 L 480 520 L -20 520 Z" fill="#16304b" opacity="0.9"/>
+    <!-- mouette lointaine -->
+    <path d="M 355 120 q 10 -9 20 0 M 375 120 q 10 -9 20 0" stroke="#1a1a21" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+    <!-- ===== PERSONNAGE (buste) ===== -->
+    <!-- vareuse marine -->
+    <path d="M 92 520 L 96 402 Q 100 352 150 336 L 200 320 L 260 320 L 310 336 Q 360 352 364 402 L 368 520 Z"
+          fill="#16304b" stroke="#1a1a21" stroke-width="7"/>
+    <!-- col roule creme -->
+    <path d="M 176 322 Q 230 300 284 322 L 284 352 Q 230 372 176 352 Z" fill="#efe6d4" stroke="#1a1a21" stroke-width="6"/>
+    <!-- rayures du col -->
+    <path d="M 180 334 Q 230 316 280 334 M 178 344 Q 230 327 282 344" stroke="#c9b995" stroke-width="4" fill="none"/>
+    <!-- epaulettes dorees -->
+    <g stroke="#1a1a21" stroke-width="5">
+      <rect x="96" y="352" width="66" height="22" rx="8" fill="#d9a441"/>
+      <rect x="298" y="352" width="66" height="22" rx="8" fill="#d9a441"/>
+    </g>
+    <circle cx="112" cy="363" r="5" fill="#1a1a21"/><circle cx="129" cy="363" r="5" fill="#1a1a21"/><circle cx="146" cy="363" r="5" fill="#1a1a21"/>
+    <circle cx="314" cy="363" r="5" fill="#1a1a21"/><circle cx="331" cy="363" r="5" fill="#1a1a21"/><circle cx="348" cy="363" r="5" fill="#1a1a21"/>
+    <!-- boutons -->
+    <circle cx="230" cy="408" r="7" fill="#d9a441" stroke="#1a1a21" stroke-width="4"/>
+    <circle cx="230" cy="452" r="7" fill="#d9a441" stroke="#1a1a21" stroke-width="4"/>
+    <circle cx="230" cy="496" r="7" fill="#d9a441" stroke="#1a1a21" stroke-width="4"/>
+
+    <!-- tete -->
+    <ellipse cx="230" cy="222" rx="86" ry="92" fill="#f2c9a0" stroke="#1a1a21" stroke-width="7"/>
+    <!-- oreilles -->
+    <ellipse cx="146" cy="232" rx="14" ry="20" fill="#f2c9a0" stroke="#1a1a21" stroke-width="6"/>
+    <ellipse cx="314" cy="232" rx="14" ry="20" fill="#f2c9a0" stroke="#1a1a21" stroke-width="6"/>
+
+    <!-- barbe grise (masse ronde, distincte : GRISE et courte) -->
+    <path d="M 152 240 Q 148 330 196 352 Q 230 368 264 352 Q 312 330 308 240
+             Q 300 296 264 300 L 264 286 Q 230 300 196 286 L 196 300 Q 160 296 152 240 Z"
+          fill="#d8d5cf" stroke="#1a1a21" stroke-width="7"/>
+    <!-- texture barbe -->
+    <path d="M 180 300 q 8 16 2 30 M 230 314 q 0 16 0 28 M 280 300 q -8 16 -2 30"
+          stroke="#a9a49b" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <!-- moustache -->
+    <path d="M 188 262 Q 230 246 272 262 Q 252 278 230 274 Q 208 278 188 262 Z"
+          fill="#c4c0b8" stroke="#1a1a21" stroke-width="6"/>
+
+    <!-- nez rond rougeaud -->
+    <ellipse cx="230" cy="240" rx="20" ry="17" fill="#e8a07a" stroke="#1a1a21" stroke-width="6"/>
+    <!-- joues -->
+    <ellipse cx="176" cy="238" rx="11" ry="7" fill="#e8a07a" opacity="0.55"/>
+    <ellipse cx="284" cy="238" rx="11" ry="7" fill="#e8a07a" opacity="0.55"/>
+
+    <!-- yeux : un oeil qui cligne (malice de vieux loup) -->
+    <circle cx="196" cy="206" r="7" fill="#1a1a21"/>
+    <path d="M 258 206 q 12 8 24 0" stroke="#1a1a21" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <!-- sourcils broussailleux gris -->
+    <path d="M 178 186 q 18 -12 38 -4" stroke="#c4c0b8" stroke-width="10" fill="none" stroke-linecap="round"/>
+    <path d="M 178 186 q 18 -12 38 -4" stroke="#1a1a21" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.5"/>
+    <path d="M 246 182 q 20 -8 38 4" stroke="#c4c0b8" stroke-width="10" fill="none" stroke-linecap="round"/>
+    <path d="M 246 182 q 20 -8 38 4" stroke="#1a1a21" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.5"/>
+    <!-- rides pattes d'oie -->
+    <path d="M 292 200 l 12 -4 M 292 210 l 12 2" stroke="#1a1a21" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- pipe (cote gauche du visage) -->
+    <path d="M 196 276 L 152 300" stroke="#7a4a26" stroke-width="9" stroke-linecap="round"/>
+    <path d="M 143 292 q -16 4 -14 20 q 2 14 18 12 q 12 -2 12 -16 l -4 -14 Z" fill="#8a5a30" stroke="#1a1a21" stroke-width="5"/>
+    <!-- fumee -->
+    <path d="M 140 272 q -8 -12 2 -20 q 10 -8 4 -18" stroke="#9fb3bd" stroke-width="5" fill="none" stroke-linecap="round" opacity="0.9"/>
+
+    <!-- casquette d'amiral -->
+    <path d="M 142 168 Q 150 96 230 92 Q 310 96 318 168 L 318 176 L 142 176 Z"
+          fill="#12263d" stroke="#1a1a21" stroke-width="7"/>
+    <!-- bande doree -->
+    <rect x="142" y="160" width="176" height="18" fill="#d9a441" stroke="#1a1a21" stroke-width="5"/>
+    <!-- visiere -->
+    <path d="M 150 176 Q 230 210 310 176 L 318 184 Q 230 222 142 184 Z" fill="#1a1a21"/>
+    <!-- ecusson ancre -->
+    <circle cx="230" cy="136" r="19" fill="#efe6d4" stroke="#1a1a21" stroke-width="5"/>
+    <g stroke="#fb0048" stroke-width="4.5" fill="none" stroke-linecap="round">
+      <circle cx="230" cy="128" r="3.6"/>
+      <path d="M 230 131 L 230 148 M 222 138 L 238 138 M 219 143 q 11 10 22 0"/>
+    </g>
+  </g>
+
+  <!-- cadre hublot laiton -->
+  <circle cx="230" cy="260" r="218" fill="none" stroke="#1a1a21" stroke-width="10"/>
+  <circle cx="230" cy="260" r="230" fill="none" stroke="#d9a441" stroke-width="12"/>
+  <circle cx="230" cy="260" r="241" fill="none" stroke="#1a1a21" stroke-width="7"/>
+  <!-- rivets -->
+  <g fill="#d9a441" stroke="#1a1a21" stroke-width="4">
+    <circle cx="230" cy="24" r="9"/><circle cx="230" cy="496" r="9"/>
+    <circle cx="-1" cy="260" r="9" transform="translate(7,0)"/><circle cx="454" cy="260" r="9"/>
+    <circle cx="66" cy="97" r="9"/><circle cx="394" cy="97" r="9"/>
+    <circle cx="66" cy="423" r="9"/><circle cx="394" cy="423" r="9"/>
+  </g>
+</svg>

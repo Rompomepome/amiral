@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.4 — 2026-07-03
+- New social preview: original old-sea-dog admiral character (flat
+  comic style, porthole frame) + a clear 3-step schema in Montserrat.
+  Original design — not derived from any copyrighted character.
+- assets/admiral-character.svg: the character source, reusable for
+  README, posts, stickers.
+
+
 ## v0.4.3 — 2026-07-03
 - Coherence sweep: purged 5 stale profile names (fable-fine,
   sonnet-fast) from quota-math, how-it-works and the quota-report
