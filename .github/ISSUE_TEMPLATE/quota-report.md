@@ -12,7 +12,7 @@ labels: quota-data
 **Before** (naive Fable, or Fable+ultracode):
 - tokens consumed / % of usage window:
 
-**After** (amiral / fable-fine):
+**After** (amiral / amiral-fine):
 - tokens consumed / % of usage window:
 
 **Notes** (fan-out observed, worker models confirmed in /agents, etc.):

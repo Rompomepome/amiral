@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.3 — 2026-07-03
+- Coherence sweep: purged 5 stale profile names (fable-fine,
+  sonnet-fast) from quota-math, how-it-works and the quota-report
+  template, including one leftover env-var mention contradicting the
+  v0.4.2 effort fix. Automated link check: all internal links valid.
+- assets/social-preview.png (1280x640): launch asset for GitHub social
+  preview and link shares.
+
+
 ## v0.4.2 — 2026-07-03
 - **Fix a silent token leak in our own profiles**: CLAUDE_CODE_EFFORT_LEVEL
   takes precedence over agent frontmatter, forcing every worker

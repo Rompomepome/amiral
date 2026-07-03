@@ -40,7 +40,7 @@ With `CLAUDE_CODE_SUBAGENT_MODEL=sonnet`:
 - The orchestrator (Fable) only spends tokens on planning, delegation
   messages, verification, and review — the short, high-value phases.
 - Every token-heavy execution loop runs on Sonnet (or Haiku for the
-  grunt agent in `fable-fine` mode).
+  grunt agent in `amiral-fine` mode).
 - The anti-fan-out policy caps parallelism at 3-4 workers, which is also
   the community sweet spot: beyond that you spend more merging summaries
   than you save parallelizing.
@@ -54,7 +54,7 @@ Subagent model resolution order (official docs):
 3. agent frontmatter `model:`
 4. main conversation model (inherit)
 
-`amiral` uses (1) as a hard cost ceiling. `fable-fine` drops the env
+`amiral` uses (1) as a hard cost ceiling. `amiral-fine` drops the env
 var so (3) takes over, letting `grunt` run on Haiku.
 
 One caveat: organization `availableModels` allowlists are checked; a

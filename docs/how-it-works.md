@@ -8,7 +8,7 @@ repo's `CLAUDE.md` to `~/.claude/amiral-policy.md` and adds one
 Claude Code reads it at every session start, in every project. It
 teaches the orchestrator role, the fan-out discipline, and the
 verification gates. It is deliberately model-agnostic: it applies even
-in `sonnet-fast` mode.
+in `matelot` mode.
 
 **Layer 2 — Worker definitions (the agents).** Three markdown files in
 `~/.claude/agents/`, each with YAML frontmatter declaring its model,
@@ -25,7 +25,7 @@ delegate — write descriptions like tool descriptions.
 here, not in the policy. `amiral` sets
 `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` (highest precedence: a hard cost
 ceiling whatever the orchestrator spawns) plus
-`CLAUDE_CODE_EFFORT_LEVEL=xhigh`. `fable-fine` drops the env var so the
+`--effort xhigh`. `amiral-fine` drops the subagent env var so the
 frontmatter routing takes over.
 
 ## The /plan-ship workflow
