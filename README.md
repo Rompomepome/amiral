@@ -65,6 +65,7 @@ The pattern outlives any single model. That's the point.
 | 🅐 **implementer** | [`agents/implementer.md`](agents/implementer.md) | Implements features against a validated plan. `model: sonnet`. Full write access. |
 | 🅐 **grunt** | [`agents/grunt.md`](agents/grunt.md) | Mass mechanical work (renames, boilerplate, migrations). `model: haiku`, `effort: low`. |
 | 🅐 **reviewer** | [`agents/reviewer.md`](agents/reviewer.md) | Fresh-context review right after implementation. Read-only tools, prioritized report. |
+| 🏴 **corsaire** | [`agents/corsaire.md`](agents/corsaire.md) | Licensed adversary: pre-mortem attack on risky or vibe-coded features — assumes it already failed in production, works backward to every cause. Read-only, hostile, concrete. |
 | 🅢 **/plan-ship** | [`skills/plan-ship/SKILL.md`](skills/plan-ship/SKILL.md) | One command: plan → delegate → verify → review → summary. Never commits without your OK. |
 | 📜 **Routing policy** | [`CLAUDE.md`](CLAUDE.md) | Persistent memory: orchestrator role, anti-fan-out discipline, mandatory verification. |
 | ⚡ **Fleet profiles** | [`shell/`](shell/) | `amiral`, `amiral-fine`, `amiral-ultra`, `matelot` — bash/zsh **and** PowerShell. Safe permission defaults. |
@@ -125,6 +126,14 @@ Inside a session:
 ```
 
 …and the orchestrator plans, hands implementation to `implementer`, bulk edits to `grunt`, verification gates the result, and `reviewer` reads the diff with fresh eyes before you get a summary.
+
+Shipping something risky, security-sensitive, or vibe-coded? Send the corsaire before the users find it:
+
+```
+use the corsaire agent on the auth changes before we ship
+```
+
+The reviewer checks the work. The corsaire assumes it already failed in production and hunts the cause. If you can't review code yourself, the corsaire is your pre-mortem.
 
 ## ✅ Verify the routing actually works
 

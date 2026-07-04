@@ -1,102 +1,101 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 520" width="460" height="520">
-  <!-- Amiral original "Le Vieux" — loup de mer : barbe grise, vareuse marine
-       a epaulettes dorees, casquette a ancre, pipe. Aplats + trait encre. -->
-  <defs>
-    <clipPath id="port"><circle cx="230" cy="260" r="218"/></clipPath>
-  </defs>
-
-  <!-- Hublot : fond ciel + mer -->
+  <!-- Vieux loup de mer — ligne claire : trait encre uniforme, aplats,
+       asymetrie organique, 3/4 gauche, barbe au vent. Design original. -->
+  <defs><clipPath id="port"><circle cx="230" cy="260" r="218"/></clipPath></defs>
   <g clip-path="url(#port)">
-    <rect x="0" y="0" width="460" height="520" fill="#cfe3ea"/>
-    <!-- vagues stylisees -->
-    <path d="M-20 388 Q 30 368 80 388 T 180 388 T 280 388 T 380 388 T 480 388 L 480 520 L -20 520 Z" fill="#1d3b5a"/>
-    <path d="M-20 412 Q 30 394 80 412 T 180 412 T 280 412 T 380 412 T 480 412 L 480 520 L -20 520 Z" fill="#16304b" opacity="0.9"/>
-    <!-- mouette lointaine -->
-    <path d="M 355 120 q 10 -9 20 0 M 375 120 q 10 -9 20 0" stroke="#1a1a21" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <rect width="460" height="520" fill="#cdE2ea"/>
+    <!-- nuage -->
+    <path d="M 320 96 q 14 -22 38 -14 q 8 -18 30 -12 q 22 4 20 24 q 18 2 14 20 l -102 0 Z" fill="#f2efe8" stroke="#1a1a21" stroke-width="4"/>
+    <!-- mer -->
+    <path d="M -20 386 Q 40 366 92 384 T 200 382 T 306 386 T 412 380 T 500 386 L 500 520 L -20 520 Z" fill="#1d3b5a"/>
+    <path d="M -20 414 Q 46 398 100 412 T 212 410 T 322 414 T 480 408 L 480 520 L -20 520 Z" fill="#152c46"/>
+    <path d="M 40 396 q 14 -8 26 0 M 300 392 q 16 -9 30 -1" stroke="#e8f2f5" stroke-width="4" fill="none" stroke-linecap="round"/>
 
-    <!-- ===== PERSONNAGE (buste) ===== -->
-    <!-- vareuse marine -->
-    <path d="M 92 520 L 96 402 Q 100 352 150 336 L 200 320 L 260 320 L 310 336 Q 360 352 364 402 L 368 520 Z"
-          fill="#16304b" stroke="#1a1a21" stroke-width="7"/>
-    <!-- col roule creme -->
-    <path d="M 176 322 Q 230 300 284 322 L 284 352 Q 230 372 176 352 Z" fill="#efe6d4" stroke="#1a1a21" stroke-width="6"/>
-    <!-- rayures du col -->
-    <path d="M 180 334 Q 230 316 280 334 M 178 344 Q 230 327 282 344" stroke="#c9b995" stroke-width="4" fill="none"/>
-    <!-- epaulettes dorees -->
-    <g stroke="#1a1a21" stroke-width="5">
-      <rect x="96" y="352" width="66" height="22" rx="8" fill="#d9a441"/>
-      <rect x="298" y="352" width="66" height="22" rx="8" fill="#d9a441"/>
-    </g>
-    <circle cx="112" cy="363" r="5" fill="#1a1a21"/><circle cx="129" cy="363" r="5" fill="#1a1a21"/><circle cx="146" cy="363" r="5" fill="#1a1a21"/>
-    <circle cx="314" cy="363" r="5" fill="#1a1a21"/><circle cx="331" cy="363" r="5" fill="#1a1a21"/><circle cx="348" cy="363" r="5" fill="#1a1a21"/>
-    <!-- boutons -->
-    <circle cx="230" cy="408" r="7" fill="#d9a441" stroke="#1a1a21" stroke-width="4"/>
-    <circle cx="230" cy="452" r="7" fill="#d9a441" stroke="#1a1a21" stroke-width="4"/>
-    <circle cx="230" cy="496" r="7" fill="#d9a441" stroke="#1a1a21" stroke-width="4"/>
+    <!-- ===== BUSTE 3/4 ===== -->
+    <!-- caban, col releve, epaules asymetriques -->
+    <path d="M 78 520 L 84 418 Q 88 366 138 348 L 168 338 Q 160 322 172 314 L 196 330
+             L 262 326 L 288 306 Q 302 314 296 332 L 322 342 Q 374 360 378 414 L 386 520 Z"
+          fill="#182f4a" stroke="#1a1a21" stroke-width="7"/>
+    <!-- revers du col -->
+    <path d="M 172 314 L 196 330 L 186 372 Q 168 360 164 340 Z" fill="#10233a" stroke="#1a1a21" stroke-width="6"/>
+    <path d="M 288 306 L 296 332 L 306 368 Q 288 372 274 352 L 262 326 Z" fill="#10233a" stroke="#1a1a21" stroke-width="6"/>
+    <!-- galons d'amiral sur la manche visible -->
+    <path d="M 96 468 q 34 -12 62 2 M 98 486 q 34 -12 60 2" stroke="#d9a441" stroke-width="7" fill="none"/>
+    <!-- boutons decales (3/4) -->
+    <circle cx="252" cy="412" r="7" fill="#d9a441" stroke="#1a1a21" stroke-width="4"/>
+    <circle cx="258" cy="458" r="7" fill="#d9a441" stroke="#1a1a21" stroke-width="4"/>
+    <circle cx="262" cy="504" r="7" fill="#d9a441" stroke="#1a1a21" stroke-width="4"/>
 
-    <!-- tete -->
-    <ellipse cx="230" cy="222" rx="86" ry="92" fill="#f2c9a0" stroke="#1a1a21" stroke-width="7"/>
-    <!-- oreilles -->
-    <ellipse cx="146" cy="232" rx="14" ry="20" fill="#f2c9a0" stroke="#1a1a21" stroke-width="6"/>
-    <ellipse cx="314" cy="232" rx="14" ry="20" fill="#f2c9a0" stroke="#1a1a21" stroke-width="6"/>
+    <!-- ===== BARBE au vent (masse organique, part vers la droite) ===== -->
+    <path d="M 150 250
+             q -10 34 2 62 q 10 26 34 44
+             q -4 16 8 26 q 4 18 22 22 q 14 16 34 10 q 24 12 44 -2
+             q 26 4 38 -16 q 22 -6 24 -30 q 16 -18 8 -40
+             q 12 -22 0 -44 q 6 -18 -6 -30
+             q -4 26 -26 36 q 2 -16 -6 -26 q -8 22 -30 26 q -24 6 -46 -2
+             q -20 -6 -28 -24 q -8 12 -6 26 q -20 -10 -26 -38 Z"
+          fill="#dcd9d2" stroke="#1a1a21" stroke-width="7"/>
+    <!-- meches -->
+    <path d="M 190 340 q 6 18 -2 34 M 232 356 q 4 16 -4 30 M 274 348 q 8 16 2 32 M 306 320 q 12 12 10 28"
+          stroke="#aaa59c" stroke-width="4" fill="none" stroke-linecap="round"/>
 
-    <!-- barbe grise (masse ronde, distincte : GRISE et courte) -->
-    <path d="M 152 240 Q 148 330 196 352 Q 230 368 264 352 Q 312 330 308 240
-             Q 300 296 264 300 L 264 286 Q 230 300 196 286 L 196 300 Q 160 296 152 240 Z"
-          fill="#d8d5cf" stroke="#1a1a21" stroke-width="7"/>
-    <!-- texture barbe -->
-    <path d="M 180 300 q 8 16 2 30 M 230 314 q 0 16 0 28 M 280 300 q -8 16 -2 30"
-          stroke="#a9a49b" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <!-- moustache -->
-    <path d="M 188 262 Q 230 246 272 262 Q 252 278 230 274 Q 208 278 188 262 Z"
-          fill="#c4c0b8" stroke="#1a1a21" stroke-width="6"/>
+    <!-- ===== TETE 3/4 (asymetrique) ===== -->
+    <path d="M 158 176 Q 152 236 168 258 Q 182 278 214 282 Q 262 286 288 268 Q 306 254 306 214
+             Q 306 172 284 150 Q 258 130 218 134 Q 176 140 158 176 Z"
+          fill="#f0c49c" stroke="#1a1a21" stroke-width="7"/>
+    <!-- oreille visible (droite) -->
+    <path d="M 300 218 q 20 -6 18 14 q -2 18 -20 14" fill="#f0c49c" stroke="#1a1a21" stroke-width="6"/>
 
-    <!-- nez rond rougeaud -->
-    <ellipse cx="230" cy="240" rx="20" ry="17" fill="#e8a07a" stroke="#1a1a21" stroke-width="6"/>
-    <!-- joues -->
-    <ellipse cx="176" cy="238" rx="11" ry="7" fill="#e8a07a" opacity="0.55"/>
-    <ellipse cx="284" cy="238" rx="11" ry="7" fill="#e8a07a" opacity="0.55"/>
+    <!-- moustache epaisse, retombante, asymetrique -->
+    <path d="M 176 250 q 22 -22 60 -16 q 40 -8 62 18 q -8 26 -34 22 q -12 12 -30 8 q -18 4 -30 -8 q -24 2 -28 -24 Z"
+          fill="#c9c5bc" stroke="#1a1a21" stroke-width="6"/>
 
-    <!-- yeux : un oeil qui cligne (malice de vieux loup) -->
-    <circle cx="196" cy="206" r="7" fill="#1a1a21"/>
-    <path d="M 258 206 q 12 8 24 0" stroke="#1a1a21" stroke-width="6" fill="none" stroke-linecap="round"/>
-    <!-- sourcils broussailleux gris -->
-    <path d="M 178 186 q 18 -12 38 -4" stroke="#c4c0b8" stroke-width="10" fill="none" stroke-linecap="round"/>
-    <path d="M 178 186 q 18 -12 38 -4" stroke="#1a1a21" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.5"/>
-    <path d="M 246 182 q 20 -8 38 4" stroke="#c4c0b8" stroke-width="10" fill="none" stroke-linecap="round"/>
-    <path d="M 246 182 q 20 -8 38 4" stroke="#1a1a21" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.5"/>
-    <!-- rides pattes d'oie -->
-    <path d="M 292 200 l 12 -4 M 292 210 l 12 2" stroke="#1a1a21" stroke-width="3" stroke-linecap="round"/>
+    <!-- gros nez busque (3/4, deborde de la joue) -->
+    <path d="M 214 196 q -12 26 2 40 q 10 12 26 8 q 14 -4 12 -20 q 0 -14 -12 -22 q 4 -18 -6 -26 q -14 4 -22 20 Z"
+          fill="#e59d74" stroke="#1a1a21" stroke-width="6"/>
 
-    <!-- pipe (cote gauche du visage) -->
-    <path d="M 196 276 L 152 300" stroke="#7a4a26" stroke-width="9" stroke-linecap="round"/>
-    <path d="M 143 292 q -16 4 -14 20 q 2 14 18 12 q 12 -2 12 -16 l -4 -14 Z" fill="#8a5a30" stroke="#1a1a21" stroke-width="5"/>
-    <!-- fumee -->
-    <path d="M 140 272 q -8 -12 2 -20 q 10 -8 4 -18" stroke="#9fb3bd" stroke-width="5" fill="none" stroke-linecap="round" opacity="0.9"/>
+    <!-- oeil gauche plisse (concentration), droit ouvert -->
+    <path d="M 176 196 q 12 -8 26 -2" stroke="#1a1a21" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <circle cx="266" cy="192" r="7.5" fill="#1a1a21"/>
+    <path d="M 254 180 q 14 -8 26 -2" stroke="#1a1a21" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <!-- sourcils broussailleux gris, asymetriques -->
+    <path d="M 166 182 q 16 -16 42 -8 q -4 10 -18 10 q -14 2 -24 -2 Z" fill="#c9c5bc" stroke="#1a1a21" stroke-width="5"/>
+    <path d="M 246 168 q 22 -12 44 0 q -8 10 -22 8 q -14 0 -22 -8 Z" fill="#c9c5bc" stroke="#1a1a21" stroke-width="5"/>
+    <!-- rides front + patte d'oie -->
+    <path d="M 186 156 q 30 -10 62 -6 M 194 142 q 26 -8 50 -5" stroke="#1a1a21" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+    <path d="M 296 186 l 14 -6 M 298 196 l 14 0" stroke="#1a1a21" stroke-width="3.5" stroke-linecap="round"/>
 
-    <!-- casquette d'amiral -->
-    <path d="M 142 168 Q 150 96 230 92 Q 310 96 318 168 L 318 176 L 142 176 Z"
-          fill="#12263d" stroke="#1a1a21" stroke-width="7"/>
-    <!-- bande doree -->
-    <rect x="142" y="160" width="176" height="18" fill="#d9a441" stroke="#1a1a21" stroke-width="5"/>
-    <!-- visiere -->
-    <path d="M 150 176 Q 230 210 310 176 L 318 184 Q 230 222 142 184 Z" fill="#1a1a21"/>
-    <!-- ecusson ancre -->
-    <circle cx="230" cy="136" r="19" fill="#efe6d4" stroke="#1a1a21" stroke-width="5"/>
-    <g stroke="#fb0048" stroke-width="4.5" fill="none" stroke-linecap="round">
-      <circle cx="230" cy="128" r="3.6"/>
-      <path d="M 230 131 L 230 148 M 222 138 L 238 138 M 219 143 q 11 10 22 0"/>
+    <!-- pipe au coin gauche + fumee en S -->
+    <path d="M 196 262 L 148 286" stroke="#7a4a26" stroke-width="9" stroke-linecap="round"/>
+    <path d="M 138 278 q -18 2 -17 20 q 1 16 19 14 q 14 -1 14 -17 l -3 -14 Z" fill="#8a5a30" stroke="#1a1a21" stroke-width="5"/>
+    <path d="M 136 258 q -12 -12 0 -24 q 12 -12 2 -24 q -8 -10 2 -18" stroke="#9fb3bd" stroke-width="5" fill="none" stroke-linecap="round"/>
+
+    <!-- ===== CASQUETTE inclinee (bascule vers l'oeil plisse) ===== -->
+    <g transform="translate(0,-8) rotate(-5 230 150)">
+      <!-- coiffe souple, affaissee -->
+      <path d="M 148 156 Q 146 112 190 96 Q 230 82 274 94 Q 318 106 318 150
+               Q 296 138 258 136 Q 206 132 148 156 Z"
+            fill="#132a44" stroke="#1a1a21" stroke-width="7"/>
+      <!-- bande doree -->
+      <path d="M 146 158 Q 230 132 320 152 L 320 174 Q 230 152 146 178 Z" fill="#d9a441" stroke="#1a1a21" stroke-width="5"/>
+      <!-- visiere -->
+      <path d="M 152 176 Q 236 192 314 170 L 326 182 Q 234 210 142 188 Z" fill="#1a1a21"/>
+      <!-- ecusson ancre -->
+      <ellipse cx="234" cy="150" rx="20" ry="17" fill="#efe6d4" stroke="#1a1a21" stroke-width="5"/>
+      <g stroke="#fb0048" stroke-width="4.5" fill="none" stroke-linecap="round">
+        <circle cx="234" cy="142" r="3.4"/>
+        <path d="M 234 145 L 234 161 M 226 151 L 242 151 M 223 156 q 11 10 22 0"/>
+      </g>
     </g>
   </g>
 
-  <!-- cadre hublot laiton -->
+  <!-- hublot laiton -->
   <circle cx="230" cy="260" r="218" fill="none" stroke="#1a1a21" stroke-width="10"/>
   <circle cx="230" cy="260" r="230" fill="none" stroke="#d9a441" stroke-width="12"/>
   <circle cx="230" cy="260" r="241" fill="none" stroke="#1a1a21" stroke-width="7"/>
-  <!-- rivets -->
   <g fill="#d9a441" stroke="#1a1a21" stroke-width="4">
     <circle cx="230" cy="24" r="9"/><circle cx="230" cy="496" r="9"/>
-    <circle cx="-1" cy="260" r="9" transform="translate(7,0)"/><circle cx="454" cy="260" r="9"/>
+    <circle cx="6" cy="260" r="9"/><circle cx="454" cy="260" r="9"/>
     <circle cx="66" cy="97" r="9"/><circle cx="394" cy="97" r="9"/>
     <circle cx="66" cy="423" r="9"/><circle cx="394" cy="423" r="9"/>
   </g>

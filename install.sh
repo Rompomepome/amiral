@@ -39,7 +39,7 @@ else
 fi
 
 # 2. Agents
-for a in implementer grunt reviewer; do
+for a in implementer grunt reviewer corsaire; do
   cp "$REPO_DIR/agents/$a.md" "$CLAUDE_DIR/agents/$a.md"
   echo "  ok  agents/$a.md"
 done

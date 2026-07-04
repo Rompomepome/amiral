@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.5.0 — 2026-07-03
+- **New fleet member: the corsaire** — licensed adversary. Pre-mortem
+  (Klein) applied to code: assumes the feature already failed in
+  production, works backward through 6 attack surfaces (inputs, state,
+  auth, data, edges, dependencies). Severity x likelihood ranking,
+  concrete mechanisms only, plain-language verdict. Built for risky
+  and vibe-coded changes; read-only. The reviewer checks the work;
+  the corsaire hunts the future failure.
+- Redrawn admiral character: organic ligne-claire style (3/4 view,
+  wind-blown beard, tilted cap, squinting eye) replacing the geometric
+  mascot. Original design.
+
+
 ## v0.4.4 — 2026-07-03
 - New social preview: original old-sea-dog admiral character (flat
   comic style, porthole frame) + a clear 3-step schema in Montserrat.

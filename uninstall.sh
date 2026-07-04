@@ -9,6 +9,7 @@ rm -f "$CLAUDE_DIR/amiral-policy.md" \
       "$CLAUDE_DIR/agents/implementer.md" \
       "$CLAUDE_DIR/agents/grunt.md" \
       "$CLAUDE_DIR/agents/reviewer.md" \
+      "$CLAUDE_DIR/agents/corsaire.md" \
       "$CLAUDE_DIR/amiral-profiles.sh" \
       "$CLAUDE_DIR/amiral-profiles.ps1" \
       "$CLAUDE_DIR/amiral-doctor"

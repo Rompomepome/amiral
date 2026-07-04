@@ -42,7 +42,7 @@ claude update
 
 Windows : profils PowerShell inclus (`shell/amiral-profiles.ps1`).
 
-Par défaut, prompts de permission standard (sûr par défaut) — le spectre complet vitesse/sécurité est dans [docs/permissions.md](docs/permissions.md). En session : `/plan-ship <feature>` déroule plan → délégation → vérification → revue.
+Par défaut, prompts de permission standard (sûr par défaut) — le spectre complet vitesse/sécurité est dans [docs/permissions.md](docs/permissions.md). En session : `/plan-ship <feature>` déroule plan → délégation → vérification → revue. Et pour tout ce qui est risqué ou vibe-codé : le **corsaire**, l'adversaire sous licence — il part du principe que le feature a déjà échoué en prod et remonte les causes (pré-mortem appliqué au code, rapport gravité × probabilité, lecture seule).
 
 **Au-delà de Claude Code** : l'implémentation est Claude Code, mais le pattern et la discipline sont portables. [`PATTERN.md`](PATTERN.md) = la spec agnostique (Aider fait du brain/hands nativement via `--architect`) ; [`ports/AGENTS.md`](ports/AGENTS.md) = **la discipline du matelot** au standard AGENTS.md (Linux Foundation, lu par 25+ outils : Codex, Aider, OpenCode, Cursor, Gemini CLI...). L'amiral est spécifique à Claude Code ; le matelot est universel.
 

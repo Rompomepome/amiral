@@ -39,6 +39,7 @@ jobs:
           test -f "$HOME/.claude/agents/implementer.md"
           test -f "$HOME/.claude/agents/grunt.md"
           test -f "$HOME/.claude/agents/reviewer.md"
+          test -f "$HOME/.claude/agents/corsaire.md"
           test -f "$HOME/.claude/skills/plan-ship/SKILL.md"
           test -f "$HOME/.claude/amiral-profiles.sh"
           test -f "$HOME/.claude/amiral-profiles.ps1"
