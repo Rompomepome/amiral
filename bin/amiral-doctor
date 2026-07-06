@@ -32,10 +32,10 @@ if [ -f "$CLAUDE_DIR/CLAUDE.md" ] && grep -q 'amiral-policy.md' "$CLAUDE_DIR/CLA
 else
   warn "policy not imported in $CLAUDE_DIR/CLAUDE.md (plugin install covers agents/skills but not the global policy)"
 fi
-M=0; for a in implementer grunt reviewer; do [ -f "$CLAUDE_DIR/agents/$a.md" ] && M=$((M+1)); done
-if [ "$M" = "3" ]; then ok "3 worker agents installed"; else
+M=0; for a in implementer grunt reviewer corsaire; do [ -f "$CLAUDE_DIR/agents/$a.md" ] && M=$((M+1)); done
+if [ "$M" = "4" ]; then ok "4 fleet agents installed"; else
   # plugin path: agents live in the plugin cache, not ~/.claude/agents
-  warn "$M/3 agents in $CLAUDE_DIR/agents (fine if installed via /plugin — check /agents inside a session)"
+  warn "$M/4 agents in $CLAUDE_DIR/agents (fine if installed via /plugin — check /agents inside a session)"
 fi
 [ -f "$CLAUDE_DIR/amiral-profiles.sh" ] && ok "shell profiles present" || warn "shell profiles not in $CLAUDE_DIR (curl them from the repo)"
 

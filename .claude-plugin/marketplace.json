@@ -7,7 +7,7 @@
     {
       "name": "amiral",
       "source": "./",
-      "description": "Orchestrator/worker model routing: expensive brain (Fable/Opus) plans and verifies, cheap hands (Sonnet/Haiku) execute. Includes 3 worker agents and the /plan-ship workflow."
+      "description": "Orchestrator/worker model routing: expensive brain (Fable/Opus) plans and verifies, cheap hands (Sonnet/Haiku) execute. Includes 4 specialized agents (implementer, grunt, reviewer, corsaire) and the /plan-ship workflow."
     }
   ]
 }

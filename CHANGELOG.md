@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.1 — 2026-07-03
+- Post-corsaire consistency pass: marketplace description, how-it-works
+  and the doctor now count 4 agents (the doctor had escaped the sweep —
+  no .sh extension). Note: the "6 markdown files" claim is now exactly
+  true (policy + 4 agents + skill).
+- Social preview: proper French accents and typographic apostrophes
+  (modèle, découpe, exécutent, VÉRIF).
+
+
 ## v0.5.0 — 2026-07-03
 - **New fleet member: the corsaire** — licensed adversary. Pre-mortem
   (Klein) applied to code: assumes the feature already failed in
