@@ -18,10 +18,13 @@
 
 ## ⚓ How you use it: one word
 
-Install once, then type **`amiral`** and just talk. That's it.
+Install once, then type **`amiral`**. The very first time, it asks your
+plan once (Pro / Max / credits) and remembers it — so it always uses the
+best brain included in *your* plan. After that, just talk.
 
 ```
 amiral
+# first run only:  Which Claude plan are you on?  [1 Pro · 2 Max · 3 credits]
 > ajoute la validation email au formulaire d'inscription
 ```
 
@@ -203,6 +206,8 @@ The **implementation** here is Claude Code (native routing primitives). The **pa
 - [`ports/AGENTS.md`](ports/AGENTS.md) — **the matelot discipline**: the worker policy in the [AGENTS.md open standard](https://agents.md) (Linux Foundation, read by 25+ tools). The amiral is Claude Code-specific; the matelot is universal. Copy one file to your repo root and any of Codex, Aider, OpenCode, Cursor, Gemini CLI, Copilot, Zed or Warp inherits the discipline.
 
 One repo, three layers: universal pattern → portable discipline → Claude Code reference implementation.
+
+**"Can the admiral call GPT or Gemini?"** Not from inside Claude Code — subagents run on Anthropic models, by design. Routing to other vendors means a proxy/gateway you'd host and maintain (that's a framework, not 6 files). The clean answer is the portable layer above: run the amiral *pattern* on a tool that already speaks many LLMs — OpenCode (75+ providers), Aider, Codex — via [`ports/AGENTS.md`](ports/AGENTS.md). amiral stays small and native; multi-vendor lives where it belongs.
 
 ## 🪶 Not a framework
 

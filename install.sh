@@ -67,6 +67,9 @@ echo "  ok  amiral-doctor"
 cp "$REPO_DIR/bin/amiral-trust" "$CLAUDE_DIR/amiral-trust"
 chmod +x "$CLAUDE_DIR/amiral-trust"
 echo "  ok  amiral-trust"
+cp "$REPO_DIR/bin/amiral-setup" "$CLAUDE_DIR/amiral-setup"
+chmod +x "$CLAUDE_DIR/amiral-setup"
+echo "  ok  amiral-setup"
 
 case "${SHELL:-}" in
   */zsh) RC_FILE="~/.zshrc" ;;

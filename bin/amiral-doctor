@@ -46,6 +46,13 @@ done
 [ "${SOURCED:-0}" = "1" ] || warn "profiles not sourced in ~/.zshrc or ~/.bashrc"
 
 echo "-- Fleet config --"
+PREFS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/amiral.env"
+if [ -f "$PREFS" ]; then
+  . "$PREFS" 2>/dev/null || true
+  ok "preferences set (amiral.env) — first-run setup done"
+else
+  echo "  [i]    no amiral.env yet — first 'amiral' will ask your plan once (or run amiral-setup)"
+fi
 echo "  brain: ${AMIRAL_BRAIN:-opus (default)}"
 echo "  hands: ${AMIRAL_HANDS:-sonnet (default)}"
 case "${AMIRAL_BRAIN:-opus}" in

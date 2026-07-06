@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.6.2 - 2026-07-06
+- **First-run plan setup, asked once.** The first `amiral` asks which
+  plan you're on (Pro/Max/credits) and pins the best in-plan brain to
+  ~/.claude/amiral.env — then never asks again. New `bin/amiral-setup`
+  (re-runnable), loaded by the shell profiles; the installer runs it and
+  copies it. Keeps the one-word experience while making the model choice
+  explicit up front, as requested.
+- README documents the first-run prompt, and answers "can the admiral
+  call GPT/Gemini?" honestly: not natively (subagents are Anthropic
+  models); use the portable AGENTS.md layer on a multi-provider tool
+  (OpenCode/Aider/Codex) instead of bolting a gateway onto amiral.
+- doctor shows whether first-run setup has been done.
+
+
 ## v0.6.1 - 2026-07-06
 - **Default brain is now Opus, not Fable.** Most users are on Pro
   (Sonnet) or Max (Opus); the free tier has no Claude Code, and Fable

@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Shell syntax
-        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh bin/amiral-doctor bin/amiral-trust hooks/subagent-verify.sh
+        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh bin/amiral-doctor bin/amiral-trust bin/amiral-setup hooks/subagent-verify.sh
 
       - name: Plugin manifests are valid JSON
         run: |
@@ -88,6 +88,13 @@ jobs:
           bash "$GITHUB_WORKSPACE/bin/amiral-trust"
           bash "$GITHUB_WORKSPACE/hooks/subagent-verify.sh" || true
           [ -f PWNED ] && echo "trusted verify.sh executed (correct)"
+
+      - name: First-run setup writes prefs
+        run: |
+          export HOME=$(mktemp -d); export CLAUDE_CONFIG_DIR="$HOME/.claude"; mkdir -p "$CLAUDE_CONFIG_DIR"
+          printf '2\n' | bash bin/amiral-setup < /dev/stdin || true
+          # non-interactive fallback: simulate choice 2 (Max/Opus)
+          test -f "$CLAUDE_CONFIG_DIR/amiral.env" && grep -q 'AMIRAL_BRAIN=' "$CLAUDE_CONFIG_DIR/amiral.env" && echo "prefs written"
 
       - name: No dangerous flags shipped
         run: |

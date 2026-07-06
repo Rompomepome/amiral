@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# amiral first-run setup — asked ONCE, then remembered.
+# Detects nothing it can't; just asks your plan and pins the right brain
+# so `amiral` works inside your subscription with zero further choices.
+set -uo pipefail
+
+CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+PREFS="$CLAUDE_DIR/amiral.env"
+mkdir -p "$CLAUDE_DIR"
+
+echo ""
+echo "⚓ amiral — one-time setup (takes 10 seconds)"
+echo ""
+echo "Which Claude plan are you on? This sets the best brain that's"
+echo "included in YOUR plan — no credits, no surprises."
+echo ""
+echo "  1) Pro                 → brain: Sonnet   (all-in-plan, lightest)"
+echo "  2) Max / Team Premium  → brain: Opus     (included on Max)"
+echo "  3) I have usage credits and want the premium planning brain"
+echo "                         → brain: Fable    (metered after Jul 7, 2026)"
+echo "  4) Not sure / just pick a safe default    → brain: Opus"
+echo ""
+printf "Enter 1-4 [4]: "
+read -r choice </dev/tty || choice=4
+case "${choice:-4}" in
+  1) BRAIN=sonnet;  LABEL="Pro (Sonnet brain)";;
+  2) BRAIN=opus;    LABEL="Max (Opus brain)";;
+  3) BRAIN=fable;   LABEL="Fable (premium, metered)";;
+  *) BRAIN=opus;    LABEL="safe default (Opus brain)";;
+esac
+
+cat > "$PREFS" << PREFEOF
+# amiral preferences — written by amiral-setup on $(date -u +%Y-%m-%dT%H:%MZ)
+# Edit freely, or re-run:  amiral-setup
+# Brain = the admiral (planning/judgment). Hands = the workers (execution).
+export AMIRAL_BRAIN=$BRAIN
+export AMIRAL_HANDS=sonnet
+PREFEOF
+
+echo ""
+echo "✓ Saved to $PREFS  →  $LABEL, workers on Sonnet."
+echo "  From now on just type:  amiral   (no more questions)"
+echo "  Change anytime:         amiral-setup"
+echo ""

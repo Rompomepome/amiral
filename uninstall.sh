@@ -13,7 +13,9 @@ rm -f "$CLAUDE_DIR/amiral-policy.md" \
       "$CLAUDE_DIR/amiral-profiles.sh" \
       "$CLAUDE_DIR/amiral-profiles.ps1" \
       "$CLAUDE_DIR/amiral-doctor" \
-      "$CLAUDE_DIR/amiral-trust"
+      "$CLAUDE_DIR/amiral-trust" \
+      "$CLAUDE_DIR/amiral-setup" \
+      "$CLAUDE_DIR/amiral.env"
 rm -f "$CLAUDE_DIR/skills/plan-ship/SKILL.md"
 rmdir "$CLAUDE_DIR/skills/plan-ship" 2>/dev/null || true   # only if now empty
 
