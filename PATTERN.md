@@ -40,7 +40,11 @@ gates + a doctor for the silent failure modes.
    gate (`verify.sh` exit 0) defines "done". Where the harness supports
    it, enforce with a hook; where it doesn't, the brain re-runs the gate
    itself before accepting.
-6. **A human gate before irreversibility:** no commit/push/deploy
+6. **An adversarial pass before risk:** for changes touching auth,
+   money, user input or data, a pre-mortem attacker (fresh context,
+   read-only) assumes the shipped feature already failed and hunts the
+   cause — before users do.
+7. **A human gate before irreversibility:** no commit/push/deploy
    without explicit approval.
 
 ## Implementation map per CLI

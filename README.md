@@ -1,5 +1,7 @@
 # ⚓ amiral
 
+<img src="assets/admiral-character.svg" width="190" align="right" alt="amiral — the old sea dog"/>
+
 **The admiral doesn't row.** Orchestrator/worker model routing for Claude Code: an expensive brain (Fable 5, Opus) plans, delegates and verifies — cheap hands (Sonnet, Haiku) do the token-heavy execution.
 
 *Français ? Lisez le [README.fr.md](README.fr.md).*
@@ -134,6 +136,25 @@ use the corsaire agent on the auth changes before we ship
 ```
 
 The reviewer checks the work. The corsaire assumes it already failed in production and hunts the cause. If you can't review code yourself, the corsaire is your pre-mortem.
+
+## 🚀 Try it in 5 minutes
+
+```bash
+git clone https://github.com/Rompomepome/amiral.git && cd amiral && ./install.sh
+source ~/.claude/amiral-profiles.sh
+amiral-doctor                       # fleet health check
+cd ~/your-nextjs-project
+cp ~/dev/amiral/templates/verify-nextjs.sh ./verify.sh   # your "done" gate
+amiral                              # launch the fleet
+```
+
+Then, inside the session:
+
+```
+/plan-ship add input validation to the signup form
+```
+
+Watch `/agents` while it runs: the brain plans, workers execute on Sonnet, the gate verifies, the reviewer reads the diff. That run is also your first [benchmark data point](BENCHMARKS.md).
 
 ## ✅ Verify the routing actually works
 

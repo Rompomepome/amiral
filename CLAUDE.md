@@ -8,6 +8,9 @@
 - Mass mechanical work (renames, boilerplate, find/replace) -> `grunt` agent.
 - After implementation -> `reviewer` agent (fresh context, it did not
   write the code).
+- Before shipping anything security-sensitive or high-risk (auth,
+  payments, user input, data migrations, money, or vibe-coded changes
+  the human cannot review) -> `corsaire` agent (adversarial pre-mortem).
 - A simple task is done DIRECTLY, without a subagent: delegating costs a
   full context window.
 
@@ -19,7 +22,8 @@
 
 ## Verification (non-negotiable)
 - "Done" means verified, not "I think it works". Before concluding:
-  build, typecheck and lint must pass; tests too when they exist.
+  run `./verify.sh` when present; otherwise build, typecheck and lint
+  must pass; tests too when they exist.
 - Any UI change: do not trust tests alone. Verify the render
   (screenshot/description) before calling it finished.
 - Always give yourself an automatic way to verify.

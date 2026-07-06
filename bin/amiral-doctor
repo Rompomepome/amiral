@@ -56,6 +56,15 @@ case "${AMIRAL_HANDS:-sonnet}" in
   *) warn "hands uses an alias ('${AMIRAL_HANDS:-sonnet}'). If workers show the brain model in /agents, pin it: export AMIRAL_HANDS=claude-sonnet-5" ;;
 esac
 
+echo "-- Current project --"
+if [ -x ./verify.sh ]; then
+  ok "verify.sh found here — the fleet has a machine-checkable done gate"
+elif [ -d .git ]; then
+  warn "no ./verify.sh in this project — plans can't self-verify. Grab templates/verify-nextjs.sh from the amiral repo."
+else
+  echo "  [i]    not inside a project (run from a repo to check its done gate)"
+fi
+
 echo "-- Live routing check (manual, one time) --"
 echo "  1. run:  amiral        (in any project)"
 echo "  2. ask:  'implement a tiny change using the implementer agent'"

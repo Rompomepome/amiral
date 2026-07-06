@@ -19,6 +19,10 @@ Run this workflow as an ORCHESTRATOR, minimizing consumption:
 
 4. REVIEW. Hand the review to the `reviewer` agent (fresh context).
    Address CRITICAL findings before concluding.
+   If the change touches auth, payments, user input, data migrations or
+   anything the human cannot review themselves: also send the
+   `corsaire` agent (adversarial pre-mortem) and address its top
+   findings.
 
 5. SUMMARIZE. Return: what was done, touched files, verification
    results, remaining review items, and the diff ready to commit. Do NOT

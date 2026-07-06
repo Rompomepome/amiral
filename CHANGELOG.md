@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.5.2 — 2026-07-03
+- **Wired the corsaire into the system** (it was decorative): the
+  routing policy now sends security-sensitive / high-risk / vibe-coded
+  changes to the corsaire, and /plan-ship runs it in the review step
+  for those surfaces. PATTERN.md gains the adversarial-pass principle.
+- Policy and plan-ship now prefer `./verify.sh` when present (aligns
+  the Claude Code policy with the portable discipline).
+- README: mascot on the repo page + "Try it in 5 minutes" copy-paste
+  quickstart ending on your first benchmark data point.
+- SECURITY.md: private disclosure channel, scope notes.
+- doctor: checks the current project for a verify.sh done gate.
+
+
 ## v0.5.1 — 2026-07-03
 - Post-corsaire consistency pass: marketplace description, how-it-works
   and the doctor now count 4 agents (the doctor had escaped the sweep —
