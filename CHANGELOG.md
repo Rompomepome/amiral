@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.5.2 — 2026-07-03
+## v0.5.2 — 2026-07-06
 - **Wired the corsaire into the system** (it was decorative): the
   routing policy now sends security-sensitive / high-risk / vibe-coded
   changes to the corsaire, and /plan-ship runs it in the review step
