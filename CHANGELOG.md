@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.3 — 2026-07-06
+- Fix verify-nextjs.sh (found during real dogfooding): it ran a global
+  `npx tsc` that fails when TypeScript isn't globally installed. Now it
+  prefers the project's own package.json scripts (typecheck/lint/build),
+  falls back to the LOCAL tsc via `npx --no-install`, and skips
+  gracefully with a message when a step is absent. Adds yarn detection.
+
+
 ## v0.5.2 — 2026-07-06
 - **Wired the corsaire into the system** (it was decorative): the
   routing policy now sends security-sensitive / high-risk / vibe-coded

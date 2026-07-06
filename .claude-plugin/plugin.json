@@ -1,6 +1,6 @@
 {
   "name": "amiral",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "The admiral doesn't row. Orchestrator/worker model routing for Claude Code: expensive brain plans and verifies, cheap hands execute.",
   "author": {
     "name": "Romain Poulard",
