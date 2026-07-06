@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# amiral-trust — mark THIS repo's ./verify.sh as trusted for the
+# SubagentStop verification hook. Run once, inside a repo you trust.
+# Re-run if you legitimately change verify.sh (the trust is pinned to
+# its checksum, so any edit re-requires trust — tamper-evident).
+set -uo pipefail
+
+if [ ! -f ./verify.sh ]; then
+  echo "No ./verify.sh in $(pwd). Nothing to trust." >&2; exit 1
+fi
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+TRUST_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/amiral-trusted-repos"
+FINGERPRINT="$REPO_ROOT::$(shasum ./verify.sh | awk '{print $1}')"
+
+mkdir -p "$(dirname "$TRUST_FILE")"
+if grep -qxF "$FINGERPRINT" "$TRUST_FILE" 2>/dev/null; then
+  echo "Already trusted: $REPO_ROOT/verify.sh"
+else
+  echo "$FINGERPRINT" >> "$TRUST_FILE"
+  echo "Trusted: $REPO_ROOT/verify.sh"
+  echo "(pinned to its current checksum — editing verify.sh re-requires amiral-trust)"
+fi

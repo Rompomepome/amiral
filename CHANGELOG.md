@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.5.4 — 2026-07-06
+Security & robustness pass — findings from running our own corsaire
+agent against the repo (dogfooding the adversary):
+- **CRITICAL fix**: the SubagentStop hook would run ANY repo's root
+  ./verify.sh with full privileges (booby-trap vector). Now it refuses
+  untrusted verify.sh entirely; opt in per-repo via `amiral-trust`
+  (checksum-pinned = tamper-evident) and execution is wrapped in a 300s
+  timeout. New `bin/amiral-trust`; CI proves untrusted scripts don't run.
+- install.sh now backs up any pre-existing agent/skill before
+  overwriting (timestamped .amiral-bak), matching the CLAUDE.md behavior.
+- uninstall.sh: only removes our own skill file then rmdir-if-empty
+  (no more nuking a shared skills dir); no longer claims to remove a
+  CLAUDE.md import that wasn't there; flags leftover backups.
+- install.sh: rc-append is now grep-guarded (truly idempotent).
+- doctor reports hook-trust status for the current repo.
+- Noted `amiral-auto-effort` on the roadmap (per-task effort selection),
+  pending Anthropic's own `auto` effort maturing.
+
+
 ## v0.5.3 — 2026-07-06
 - Fix verify-nextjs.sh (found during real dogfooding): it ran a global
   `npx tsc` that fails when TypeScript isn't globally installed. Now it

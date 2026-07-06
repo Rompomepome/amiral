@@ -76,6 +76,7 @@ The pattern outlives any single model. That's the point.
 | 📊 **Benchmark protocol** | [`BENCHMARKS.md`](BENCHMARKS.md) | Reproducible A/B/C measurement protocol + community results table. |
 | 🌍 **Portable pattern** | [`PATTERN.md`](PATTERN.md) + [`ports/AGENTS.md`](ports/AGENTS.md) | The CLI-agnostic spec and the matelot discipline in the AGENTS.md standard — usable by 25+ non-Claude tools. |
 | 🩺 **amiral doctor** | [`bin/amiral-doctor`](bin/amiral-doctor) | One command to check install, version, and routing config — catches the silent-fallback quota bleed. |
+| 🔐 **amiral-trust** | [`bin/amiral-trust`](bin/amiral-trust) | Per-repo, checksum-pinned trust for the verification hook — so it never runs an untrusted repo's verify.sh. |
 | 🪝 **Verification hook** | [`hooks/`](hooks/) + [docs/hooks.md](docs/hooks.md) | Opt-in `SubagentStop` gate: workers can't finish while `./verify.sh` fails. Policies ask; hooks enforce. |
 
 This repo **dogfoods itself**: clone it, open Claude Code inside, and the routing config in `.claude/` is live (CI keeps it in sync with the canonical `agents/` and `skills/`).
@@ -222,6 +223,7 @@ Full honest comparison (Ruflo, Code Kit, Octopus, Maestro, opusplan): [docs/land
 - [x] Optional `SubagentStop` hook: hard verification gate on worker results
 - [x] Portable pattern spec + AGENTS.md port (works beyond Claude Code)
 - [ ] Ralph-loop integration guide: lean routing inside autonomous loops
+- [ ] `amiral-auto-effort`: let the orchestrator pick effort per task (xhigh/max/ultracode) — pending Anthropic's own `auto` effort maturing
 - [ ] Community ports/ (OpenCode agent config, Roo mode set, Codex two-session script) — PRs open
 - [x] `amiral doctor`: one command to check install, version, and routing config
 

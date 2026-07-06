@@ -21,6 +21,10 @@ POLICY_FILE="$CLAUDE_DIR/amiral-policy.md"
 echo "-> Installing amiral into: $CLAUDE_DIR"
 mkdir -p "$CLAUDE_DIR/agents" "$CLAUDE_DIR/skills/plan-ship"
 
+# Back up any pre-existing file we are about to overwrite (once, timestamped).
+STAMP="$(date +%s)"
+backup_if_exists() { [ -f "$1" ] && cp "$1" "$1.amiral-bak.$STAMP" && echo "  bak $1 -> $1.amiral-bak.$STAMP"; return 0; }
+
 # 1. Policy (persistent memory)
 cp "$REPO_DIR/CLAUDE.md" "$POLICY_FILE"
 echo "  ok  $POLICY_FILE"
@@ -40,11 +44,13 @@ fi
 
 # 2. Agents
 for a in implementer grunt reviewer corsaire; do
+  backup_if_exists "$CLAUDE_DIR/agents/$a.md"
   cp "$REPO_DIR/agents/$a.md" "$CLAUDE_DIR/agents/$a.md"
   echo "  ok  agents/$a.md"
 done
 
 # 3. Skill
+backup_if_exists "$CLAUDE_DIR/skills/plan-ship/SKILL.md"
 cp "$REPO_DIR/skills/plan-ship/SKILL.md" "$CLAUDE_DIR/skills/plan-ship/SKILL.md"
 echo "  ok  skills/plan-ship/SKILL.md"
 
@@ -58,6 +64,9 @@ echo "  ok  amiral-profiles.ps1 (Windows/PowerShell)"
 cp "$REPO_DIR/bin/amiral-doctor" "$CLAUDE_DIR/amiral-doctor"
 chmod +x "$CLAUDE_DIR/amiral-doctor"
 echo "  ok  amiral-doctor"
+cp "$REPO_DIR/bin/amiral-trust" "$CLAUDE_DIR/amiral-trust"
+chmod +x "$CLAUDE_DIR/amiral-trust"
+echo "  ok  amiral-trust"
 
 case "${SHELL:-}" in
   */zsh) RC_FILE="~/.zshrc" ;;
@@ -72,8 +81,9 @@ Installed. The admiral doesn't row.
 
 Final steps (2 min):
 
-1) Load the profiles in your shell:
-     echo 'source $CLAUDE_DIR/amiral-profiles.sh' >> $RC_FILE && source $RC_FILE
+1) Load the profiles in your shell (skip if already present):
+     grep -qF 'amiral-profiles.sh' $RC_FILE 2>/dev/null || echo 'source $CLAUDE_DIR/amiral-profiles.sh' >> $RC_FILE
+     source $RC_FILE
    PowerShell (Windows): add to \$PROFILE:
      . "\$HOME\\.claude\\amiral-profiles.ps1"
 

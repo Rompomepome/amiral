@@ -59,6 +59,14 @@ esac
 echo "-- Current project --"
 if [ -x ./verify.sh ]; then
   ok "verify.sh found here — the fleet has a machine-checkable done gate"
+  TRUST_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/amiral-trusted-repos"
+  RR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  FP="$RR::$(shasum ./verify.sh 2>/dev/null | awk '{print $1}')"
+  if [ -f "$TRUST_FILE" ] && grep -qxF "$FP" "$TRUST_FILE" 2>/dev/null; then
+    ok "this verify.sh is trusted for the SubagentStop hook"
+  else
+    echo "  [i]    verify.sh not trusted for the hook (run 'amiral-trust' if you use the hook here)"
+  fi
 elif [ -d .git ]; then
   warn "no ./verify.sh in this project — plans can't self-verify. Grab templates/verify-nextjs.sh from the amiral repo."
 else
