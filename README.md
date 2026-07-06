@@ -11,6 +11,12 @@
 ![License](https://img.shields.io/badge/license-MIT-white?style=flat&labelColor=555)
 ![Pattern](https://img.shields.io/badge/pattern-orchestrator%2Fworkers-white?style=flat&labelColor=555)
 
+<p align="center">
+  <img src="assets/amiral-demo.gif" alt="amiral in action: one word, then the admiral plans, delegates and verifies" width="820"/>
+  <br/>
+  <em>One word. The admiral judges each task and routes it — trivial edits done inline, real features delegated, everything verified.</em>
+</p>
+
 > [!TIP]
 > Jump to [**How to Use**](#-how-to-use) for the 2-minute setup — installer or plugin, your pick.
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.3 - 2026-07-06
+- Added a terminal demo GIF (assets/amiral-demo.gif) to the top of the
+  README: one word, then the admiral triaging a trivial fix inline and
+  delegating a real feature, verified end to end. Recorded with
+  asciinema, rendered with agg.
+
+
 ## v0.6.2 - 2026-07-06
 - **First-run plan setup, asked once.** The first `amiral` asks which
   plan you're on (Pro/Max/credits) and pins the best in-plan brain to
