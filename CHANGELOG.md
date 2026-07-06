@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.6.0 - 2026-07-06
+- One-word usage. `amiral` is now the single command you need: type it
+  and just talk. The policy makes the admiral triage every task by
+  complexity and route it itself - trivial work done inline, mechanical
+  work to Haiku, real features to Sonnet (implementer), risky changes to
+  the corsaire, always verified before "done". Users never pick a model,
+  effort, or agent.
+- Variants (amiral-fine, amiral-ultra, matelot) and /plan-ship are now
+  explicitly optional power-user tools, not the default path.
+- README leads with zero-config "one word" usage.
+- Note: model choice at launch is inherently a shell concern, so one
+  embark word is the floor; after that the admiral handles everything.
+
+
 ## v0.5.4 — 2026-07-06
 Security & robustness pass — findings from running our own corsaire
 agent against the repo (dogfooding the adversary):

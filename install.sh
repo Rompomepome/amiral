@@ -96,12 +96,14 @@ Final steps (2 min):
      # ask for something that delegates, then check /agents or the
      # transcript: workers must run on Sonnet, not the brain model.
 
-Fleet commands:
-  amiral                -> brain xhigh, workers forced cheap (daily default)
-  amiral-fine           -> brain xhigh, workers per frontmatter (haiku for grunt)
-  amiral-ultra          -> brain + ultracode (then /effort -> ultracode): big audits only
-  matelot               -> pure worker session, for everything else
-  /plan-ship <feature>  -> plan -> delegate -> verify -> review, in one session
+That is it. To use amiral, type ONE word and just talk:
+
+  amiral
+  > add email validation to the signup form
+
+The admiral judges each task and routes it; you never pick a model,
+effort, or agent. Optional variants (amiral-fine, amiral-ultra, matelot)
+and /plan-ship exist for power users, but you never need them to start.
 
 Fleet config (env): AMIRAL_BRAIN (default fable), AMIRAL_HANDS (default sonnet)
   e.g.  AMIRAL_BRAIN=opus amiral   # if Fable is ever unavailable again

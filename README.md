@@ -16,6 +16,19 @@
 
 ---
 
+## ⚓ How you use it: one word
+
+Install once, then type **`amiral`** and just talk. That's it.
+
+```
+amiral
+> ajoute la validation email au formulaire d'inscription
+```
+
+You never pick a model, an effort level, or an agent. The admiral reads each request, judges its complexity, and routes it: trivial edits it does itself, mechanical work goes to a cheap fast model, real features go to a mid model that implements against a plan, risky changes get an adversarial security pass, and nothing is "done" until it verifies (build/lint/tests). You give the cap a heading; the admiral commands the fleet. **No flags to memorize. No config to write.**
+
+(Power users: optional variants and env overrides exist, but you never need them to start.)
+
 ## 🧠 The problem
 
 Frontier models in Claude Code are the fastest way to burn a usage window:

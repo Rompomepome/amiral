@@ -1,4 +1,6 @@
 # --- amiral : the admiral doesn't row (PowerShell) ---
+# ONE command: type amiral, then just talk. The admiral routes every
+# task itself; you never pick a model, effort, or agent.
 # Install: add to your PowerShell profile ($PROFILE):
 #   . "$HOME\.claude\amiral-profiles.ps1"
 # Fleet: $env:AMIRAL_BRAIN (default fable), $env:AMIRAL_HANDS (default sonnet).
