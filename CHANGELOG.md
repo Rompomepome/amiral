@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.6.1 - 2026-07-06
+- **Default brain is now Opus, not Fable.** Most users are on Pro
+  (Sonnet) or Max (Opus); the free tier has no Claude Code, and Fable
+  is metered on subscriptions after July 7. The default now works
+  inside the plans people actually have: brain=opus (included on Max;
+  Pro serves Sonnet within-plan), hands=sonnet. No credits, no config.
+- New `amiral-solo`: all-Sonnet fleet, lightest footprint on a Pro plan.
+- Fable is now an explicit opt-in premium planning brain
+  (`AMIRAL_BRAIN=fable amiral`), not the default. amiral-ultra still
+  uses the frontier brain by default (it's the premium-audit tool).
+- doctor and README reframed around "works on the plan you already have".
+
+
 ## v0.6.0 - 2026-07-06
 - One-word usage. `amiral` is now the single command you need: type it
   and just talk. The policy makes the admiral triage every task by

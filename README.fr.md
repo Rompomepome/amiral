@@ -23,7 +23,7 @@ Tu n'as pas besoin d'un modèle frontier pour renommer 40 imports. Tu en as beso
 | `amiral-ultra` | `$AMIRAL_BRAIN` + ultracode | `$AMIRAL_HANDS` forcé | Gros audits UNIQUEMENT 🔥 |
 | `matelot` | — | `$AMIRAL_HANDS` @ high | Tout le reste |
 
-Défauts : `AMIRAL_BRAIN=fable`, `AMIRAL_HANDS=sonnet`. Le cerveau est **configurable** — Fable a déjà été suspendu une fois ; `AMIRAL_BRAIN=opus amiral` et la flotte continue de naviguer.
+Défauts : **cerveau = Opus** (inclus dans Max ; sur Pro, Claude Code sert Sonnet dans ton plan — rien à payer, rien à configurer), **mains = Sonnet**. Sur Pro et tu veux le plus léger ? `amiral-solo` (tout-Sonnet). Tu veux le cerveau premium de planification ? `AMIRAL_BRAIN=fable amiral` (facturé en credits après le 7 juillet).
 
 ## Installation
 

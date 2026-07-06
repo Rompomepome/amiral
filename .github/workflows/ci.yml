@@ -76,7 +76,7 @@ jobs:
           bash "$HOME/.claude/amiral-doctor" | grep -q "Summary:"
 
       - name: Profiles load in a shell
-        run: bash -c 'source shell/amiral-profiles.sh && type amiral amiral-fine amiral-ultra matelot > /dev/null && echo functions defined'
+        run: bash -c 'source shell/amiral-profiles.sh && type amiral amiral-solo amiral-fine amiral-ultra matelot amiral-doctor > /dev/null && echo functions defined'
 
       - name: Hook refuses untrusted verify.sh
         run: |

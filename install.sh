@@ -106,6 +106,8 @@ effort, or agent. Optional variants (amiral-fine, amiral-ultra, matelot)
 and /plan-ship exist for power users, but you never need them to start.
 
 Fleet config (env): AMIRAL_BRAIN (default fable), AMIRAL_HANDS (default sonnet)
-  e.g.  AMIRAL_BRAIN=opus amiral   # if Fable is ever unavailable again
+  Defaults: brain=opus (included on Max; Pro serves Sonnet in-plan),
+  hands=sonnet. On Pro and want all-Sonnet? use  amiral-solo
+  Want the premium planning brain?  AMIRAL_BRAIN=fable amiral
 ============================================================
 EOF

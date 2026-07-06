@@ -1,7 +1,7 @@
 {
   "name": "amiral",
-  "version": "0.6.0",
-  "description": "The admiral doesn't row. Orchestrator/worker model routing for Claude Code: expensive brain plans and verifies, cheap hands execute.",
+  "version": "0.6.1",
+  "description": "The admiral doesn't row. Orchestrator/worker model routing for Claude Code: a capable brain (Opus/Fable) plans and verifies, cheap hands (Sonnet/Haiku) execute. Works inside your plan by default.",
   "author": {
     "name": "Romain Poulard",
     "url": "https://github.com/Rompomepome"

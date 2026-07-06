@@ -27,6 +27,13 @@ amiral
 
 You never pick a model, an effort level, or an agent. The admiral reads each request, judges its complexity, and routes it: trivial edits it does itself, mechanical work goes to a cheap fast model, real features go to a mid model that implements against a plan, risky changes get an adversarial security pass, and nothing is "done" until it verifies (build/lint/tests). You give the cap a heading; the admiral commands the fleet. **No flags to memorize. No config to write.**
 
+**Works on the plan you already have.** The default brain is Opus —
+included on Max, and on Pro Claude Code serves Sonnet within your plan,
+so there's nothing to pay and nothing to configure. Workers run on
+Sonnet (~1/5 the frontier cost). On a Pro plan and want the lightest
+footprint? `amiral-solo` runs an all-Sonnet fleet. Want the premium
+planning brain? `AMIRAL_BRAIN=fable amiral` (metered after July 7).
+
 (Power users: optional variants and env overrides exist, but you never need them to start.)
 
 ## 🧠 The problem
@@ -45,8 +52,9 @@ Anthropic's [official redeployment terms](https://www.anthropic.com/news/redeplo
 
 This changes the economics from *quota hygiene* to *direct money*:
 
-- **Fable brain (credits) + cheap hands** — amiral minimizes brain tokens *by construction*; you pay frontier price only for planning, judgment and review. This is the pattern's strongest use case yet.
-- **`AMIRAL_BRAIN=opus amiral`** — the pure-subscription fleet: Opus brain stays inside your plan, zero credits needed.
+- **Default = Opus brain + Sonnet hands** — fully inside your subscription (Max includes Opus; Pro serves Sonnet). No credits, no config. This is what `amiral` gives you out of the box.
+- **`AMIRAL_BRAIN=fable amiral`** — opt-in premium planning brain. amiral minimizes brain tokens *by construction*, so you pay the metered frontier rate only for planning/judgment/review, never for bulk execution.
+- **`amiral-solo`** — all-Sonnet, the lightest footprint on a Pro plan.
 - Hands are cheaper than ever: Sonnet 5 launched at **$2/$10 intro pricing through Aug 31**.
 
 Either way, the fleet sails. That's what `AMIRAL_BRAIN` is for.

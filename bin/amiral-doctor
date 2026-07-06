@@ -46,10 +46,12 @@ done
 [ "${SOURCED:-0}" = "1" ] || warn "profiles not sourced in ~/.zshrc or ~/.bashrc"
 
 echo "-- Fleet config --"
-echo "  brain: ${AMIRAL_BRAIN:-fable (default)}"
+echo "  brain: ${AMIRAL_BRAIN:-opus (default)}"
 echo "  hands: ${AMIRAL_HANDS:-sonnet (default)}"
-case "${AMIRAL_BRAIN:-fable}" in
-  fable*) warn "brain=fable: from July 8, 2026, Fable is usage-credits only on subscriptions (no auto-fallback — access stops if credits are off). Enable credits, or run AMIRAL_BRAIN=opus for a pure-subscription fleet." ;;
+case "${AMIRAL_BRAIN:-opus}" in
+  opus*)  ok "brain=opus: included on Max; on Pro, Claude Code serves Sonnet within your plan. No credits needed." ;;
+  sonnet*) ok "brain=sonnet: lightest footprint, fully inside any paid plan." ;;
+  fable*) warn "brain=fable: from July 8, 2026 Fable is usage-credits only on subscriptions (no auto-fallback — access stops if credits are off). Great as a premium planning brain; for a no-credit fleet use the default (opus) or AMIRAL_BRAIN=sonnet." ;;
 esac
 case "${AMIRAL_HANDS:-sonnet}" in
   claude-*) ok "hands pinned to a full model ID (most robust)" ;;
