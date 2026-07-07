@@ -1,6 +1,6 @@
 # ⚓ amiral
 
-<img src="assets/amiral-hero.png" width="230" align="right" alt="amiral — the old sea dog who commands the fleet"/>
+<img src="assets/amiral-hero.jpg" width="230" align="right" alt="amiral — the old sea dog who commands the fleet"/>
 
 **The admiral doesn't row.** Orchestrator/worker model routing for Claude Code: an expensive brain (Fable 5, Opus) plans, delegates and verifies — cheap hands (Sonnet, Haiku) do the token-heavy execution.
 
