@@ -30,6 +30,14 @@ ceiling whatever the orchestrator spawns) plus
 `--effort xhigh`. `amiral-fine` drops the subagent env var so the
 frontmatter routing takes over.
 
+**First-run setup.** The very first `amiral` runs `amiral-setup` once: it
+asks which plan you are on (Pro / Max / credits) and pins the best
+in-plan brain to `~/.claude/amiral.env` (Pro -> Sonnet, Max -> Opus,
+credits -> Fable). Every later run loads that file silently, so you type
+one word and never choose a model again. Re-run `amiral-setup` to change
+it. If you skip setup, the default brain is Opus (included on Max; Pro
+serves Sonnet within-plan), workers on Sonnet.
+
 ## The /plan-ship workflow
 
 A skill with `disable-model-invocation: true` (so it only runs when YOU

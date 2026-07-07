@@ -1,6 +1,6 @@
 # ⚓ amiral
 
-<img src="assets/admiral-character.svg" width="190" align="right" alt="amiral — the old sea dog"/>
+<img src="assets/amiral-hero.png" width="230" align="right" alt="amiral — the old sea dog who commands the fleet"/>
 
 **The admiral doesn't row.** Orchestrator/worker model routing for Claude Code: an expensive brain (Fable 5, Opus) plans, delegates and verifies — cheap hands (Sonnet, Haiku) do the token-heavy execution.
 
@@ -69,8 +69,6 @@ This changes the economics from *quota hygiene* to *direct money*:
 Either way, the fleet sails. That's what `AMIRAL_BRAIN` is for.
 
 ## 💡 The pattern
-
-![amiral architecture](assets/architecture.svg)
 
 Three levers, combined:
 

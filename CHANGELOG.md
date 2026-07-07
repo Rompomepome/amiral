@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.6.5 - 2026-07-07
+Documentation cleanup pass (post-launch tidy):
+- Fixed install.sh final message: it still said AMIRAL_BRAIN "default
+  fable" — the default has been Opus since v0.6.1. Now reads "default
+  opus" so nobody panics about the July 7 metering.
+- Removed the obsolete geometric assets (architecture.svg,
+  admiral-character.svg) replaced by the hero illustration; dropped the
+  old diagram image from the README.
+- quota-math: Opus stated as the default brain (not an "alternative").
+- how-it-works: documents the first-run setup (amiral-setup) and the
+  Opus-default behavior.
+- Verified: no broken internal links, docs aligned with current
+  behavior (one-word usage, Opus default, first-run setup, 4 agents).
+
+
+## v0.6.4 - 2026-07-07
+- Added the amiral hero illustration (assets/amiral-hero.png) to the top
+  of the README — an original ligne-claire old-sea-dog admiral in a
+  brass porthole, matching the maritime brand.
+- Demo GIF finalized (assets/amiral-demo.gif, ~1MB): one word, the
+  admiral triaging and fixing a task inline.
+
+
 ## v0.6.3 - 2026-07-06
 - Added a terminal demo GIF (assets/amiral-demo.gif) to the top of the
   README: one word, then the admiral triaging a trivial fix inline and

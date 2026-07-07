@@ -73,5 +73,5 @@ tokens on Sonnet 5's intro rate ($2/$10, through Aug 31) cost $0.80.
 Now scale that to the *execution* phase — the dozens of write/test/fix
 loops — and the case makes itself: a metered brain is precisely the
 scenario where minimizing brain tokens stops being hygiene and becomes
-the bill. Alternatively, `AMIRAL_BRAIN=opus` keeps the whole fleet
-inside a subscription.
+the bill. The default brain is already Opus, which keeps the whole
+fleet inside a subscription; Fable is an opt-in premium planning brain.
