@@ -15,3 +15,15 @@ Want to contribute a tool-specific port (an OpenCode agent config, a
 Roo mode set, a Codex two-session script)? PRs welcome — one folder per
 tool, a README, no binaries. We document ports; we do not maintain
 runtimes for other CLIs. That restraint is the point.
+
+## Concrete ports
+
+- [`codex/`](codex/) — run the amiral discipline with Codex, including
+  using Codex as the corsaire (adversarial second opinion on another
+  model family).
+- [`opencode/`](opencode/) — the brain/hands split on OpenCode's 75+
+  providers: frontier plans, cheap tier executes, discipline via
+  AGENTS.md.
+
+Each port is documentation and config, not a runtime. amiral is the
+discipline; these tools are the reach.

@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Shell syntax
-        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh bin/amiral-doctor bin/amiral-trust bin/amiral-setup hooks/subagent-verify.sh
+        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh bin/amiral-doctor bin/amiral-trust bin/amiral-setup bin/amiral-savings bin/amiral-report hooks/subagent-verify.sh
 
       - name: Plugin manifests are valid JSON
         run: |
@@ -40,6 +40,7 @@ jobs:
           test -f "$HOME/.claude/agents/grunt.md"
           test -f "$HOME/.claude/agents/reviewer.md"
           test -f "$HOME/.claude/agents/corsaire.md"
+          test -f "$HOME/.claude/agents/advisor.md"
           test -f "$HOME/.claude/skills/plan-ship/SKILL.md"
           test -f "$HOME/.claude/amiral-profiles.sh"
           test -f "$HOME/.claude/amiral-profiles.ps1"
@@ -76,7 +77,7 @@ jobs:
           bash "$HOME/.claude/amiral-doctor" | grep -q "Summary:"
 
       - name: Profiles load in a shell
-        run: bash -c 'source shell/amiral-profiles.sh && type amiral amiral-solo amiral-fine amiral-ultra matelot amiral-doctor > /dev/null && echo functions defined'
+        run: bash -c 'source shell/amiral-profiles.sh && type amiral amiral-solo amiral-advisor amiral-fine amiral-ultra matelot amiral-doctor > /dev/null && echo functions defined'
 
       - name: Hook refuses untrusted verify.sh
         run: |
@@ -95,6 +96,16 @@ jobs:
           printf '2\n' | bash bin/amiral-setup < /dev/stdin || true
           # non-interactive fallback: simulate choice 2 (Max/Opus)
           test -f "$CLAUDE_CONFIG_DIR/amiral.env" && grep -q 'AMIRAL_BRAIN=' "$CLAUDE_CONFIG_DIR/amiral.env" && echo "prefs written"
+
+      - name: Savings calculator runs
+        run: |
+          out=$(bash bin/amiral-savings --tokens 1 --brain fable --hands sonnet --plan 20)
+          echo "$out" | grep -q "You save" && echo "savings calc works"
+
+      - name: Report wizard runs and sends nothing
+        run: |
+          out=$(printf 'test task\n2.1.x\n100k\n40k\n80k\nyes\nnote\n' | bash bin/amiral-report)
+          echo "$out" | grep -q "Nothing has been sent" && echo "$out" | grep -q "issues/new" && echo "report wizard OK"
 
       - name: No dangerous flags shipped
         run: |

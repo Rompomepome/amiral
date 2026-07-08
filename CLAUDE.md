@@ -24,6 +24,10 @@ Triage every incoming task by complexity, then act:
   report done.
 - After any real implementation: send the `reviewer` agent (fresh
   context, it did not write the code) before concluding.
+- **Hard judgment call above a cheap executor's pay grade** (reviewing a
+  plan, a risky architecture, a real tradeoff, or genuinely stuck):
+  consult the `advisor` agent — the expensive brain, on demand. Keep
+  executing yourself for everything else; don't over-consult.
 
 Match the effort to the work too: think hard on planning and judgment,
 but keep trivial steps light. Don't over-plan a rename; don't

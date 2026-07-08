@@ -7,7 +7,7 @@
     {
       "name": "amiral",
       "source": "./",
-      "description": "Orchestrator/worker model routing: expensive brain (Fable/Opus) plans and verifies, cheap hands (Sonnet/Haiku) execute. Includes 4 specialized agents (implementer, grunt, reviewer, corsaire) and the /plan-ship workflow."
+      "description": "Orchestrator/worker model routing for Claude Code, two shapes included: orchestrator (brain plans + fans out) and advisor (cheap executor consults the brain on demand). 5 specialized agents. Works inside your plan."
     }
   ]
 }

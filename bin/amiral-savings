@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# amiral-savings — estimate what the orchestrator/advisor pattern saves
+# you vs running everything on the frontier model. Pure local math, no
+# network. Prices are notional list rates ($/million tokens) and easy to
+# edit at the top. This is an ESTIMATE: your real ratio depends on your
+# task. Measure it for real with BENCHMARKS.md.
+set -uo pipefail
+
+# --- editable price table ($ per million tokens, output rate) ---
+PRICE_FABLE=50      # frontier
+PRICE_OPUS=30       # frontier (Max-included)
+PRICE_SONNET=15     # worker
+PRICE_HAIKU=4       # cheap worker
+
+echo ""
+echo "⚓ amiral-savings — pattern cost estimator (notional list rates)"
+echo ""
+
+# defaults
+TOKENS_M=1
+BRAIN=fable
+HANDS=sonnet
+PLAN_PCT=20   # % of tokens spent on planning/judgment (brain), rest on execution (hands)
+
+# parse simple flags
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --tokens) TOKENS_M="$2"; shift 2;;
+    --brain) BRAIN="$2"; shift 2;;
+    --hands) HANDS="$2"; shift 2;;
+    --plan) PLAN_PCT="$2"; shift 2;;
+    -h|--help)
+      echo "Usage: amiral-savings [--tokens N_MILLION] [--brain fable|opus] [--hands sonnet|haiku] [--plan PCT]"
+      echo "  --tokens  total output tokens in millions (default 1)"
+      echo "  --brain   the planning model (default fable)"
+      echo "  --hands   the worker model (default sonnet)"
+      echo "  --plan    % of tokens spent on the brain (default 20)"
+      echo ""
+      echo "Example: amiral-savings --tokens 5 --brain fable --hands sonnet --plan 20"
+      exit 0;;
+    *) echo "unknown flag: $1 (try --help)"; exit 1;;
+  esac
+done
+
+price_of() {
+  case "$1" in
+    fable) echo $PRICE_FABLE;; opus) echo $PRICE_OPUS;;
+    sonnet) echo $PRICE_SONNET;; haiku) echo $PRICE_HAIKU;;
+    *) echo 0;;
+  esac
+}
+PB=$(price_of "$BRAIN"); PH=$(price_of "$HANDS")
+
+# compute with awk (floating point)
+awk -v tm="$TOKENS_M" -v pb="$PB" -v ph="$PH" -v plan="$PLAN_PCT" -v brain="$BRAIN" -v hands="$HANDS" 'BEGIN {
+  naive = tm * pb;                                   # everything on the brain
+  brain_tokens = tm * (plan/100);
+  hands_tokens = tm * (1 - plan/100);
+  amiral = brain_tokens * pb + hands_tokens * ph;    # split
+  saved = naive - amiral;
+  pct = (naive>0)? (saved/naive*100) : 0;
+  factor = (amiral>0)? (naive/amiral) : 0;
+  printf "  Scenario: %.2fM output tokens, %d%% planning on %s, %d%% execution on %s\n\n", tm, plan, brain, 100-plan, hands;
+  printf "  All-frontier (%s only):   $%.2f\n", brain, naive;
+  printf "  amiral (brain + hands):   $%.2f\n", amiral;
+  printf "  -----------------------------------------\n";
+  printf "  You save:                 $%.2f  (%.0f%% cheaper, %.1fx)\n", saved, pct, factor;
+}'
+echo ""
+echo "  Notional list rates; edit the table in this script for yours."
+echo "  This is an estimate — measure your real numbers with BENCHMARKS.md."
+echo ""

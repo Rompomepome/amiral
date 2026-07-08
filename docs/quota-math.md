@@ -61,10 +61,10 @@ One caveat: organization `availableModels` allowlists are checked; a
 value resolving to an excluded model silently falls back to inherit.
 This is why the README insists you verify the routing once.
 
-## Update — the July 7, 2026 cliff
+## Update — the Fable metering cliff
 
 Per Anthropic's official redeployment terms, Fable 5 is included in
-Pro/Max/Team plans only through July 7; from July 8 it is usage-credits
+Pro/Max/Team plans only through July 11 (extended from July 7); from July 12 it is usage-credits
 only ($10/$50 per MTok), with no automatic fallback when credits are off.
 
 This turns the routing math from quota into dollars. One planning pass

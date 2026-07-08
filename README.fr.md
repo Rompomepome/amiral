@@ -4,9 +4,9 @@
 
 *English? Read the [README.md](README.md).*
 
-## Le cliff du 7 juillet
+## Le cliff de Fable 5
 
-Conditions officielles du redéploiement : Fable 5 est inclus dans les plans Pro/Max/Team (50% des limites hebdo) **seulement jusqu'au 7 juillet 2026**. À partir du 8, chaque token Fable passe en usage credits ($10/$50 par MTok), sans bascule automatique. amiral est la réponse directe : cerveau Fable en credits + mains pas chères = tu ne paies le tarif frontier que pour la planification. Ou `AMIRAL_BRAIN=opus amiral` pour rester 100% dans ton abonnement.
+Conditions officielles du redéploiement : Fable 5 est inclus dans les plans Pro/Max/Team (50% des limites hebdo) **seulement jusqu'au 11 juillet 2026** (Anthropic a prolongé la date initiale du 7). À partir du 12, chaque token Fable passe en usage credits ($10/$50 par MTok), sans bascule automatique. amiral est la réponse directe : cerveau Fable en credits + mains pas chères = tu ne paies le tarif frontier que pour la planification. Ou `AMIRAL_BRAIN=opus amiral` pour rester 100% dans ton abonnement.
 
 ## Le problème
 
@@ -23,7 +23,7 @@ Tu n'as pas besoin d'un modèle frontier pour renommer 40 imports. Tu en as beso
 | `amiral-ultra` | `$AMIRAL_BRAIN` + ultracode | `$AMIRAL_HANDS` forcé | Gros audits UNIQUEMENT 🔥 |
 | `matelot` | — | `$AMIRAL_HANDS` @ high | Tout le reste |
 
-Défauts : **cerveau = Opus** (inclus dans Max ; sur Pro, Claude Code sert Sonnet dans ton plan — rien à payer, rien à configurer), **mains = Sonnet**. Sur Pro et tu veux le plus léger ? `amiral-solo` (tout-Sonnet). Tu veux le cerveau premium de planification ? `AMIRAL_BRAIN=fable amiral` (facturé en credits après le 7 juillet).
+Défauts : **cerveau = Opus** (inclus dans Max ; sur Pro, Claude Code sert Sonnet dans ton plan — rien à payer, rien à configurer), **mains = Sonnet**. Sur Pro et tu veux le plus léger ? `amiral-solo` (tout-Sonnet). Tu veux le cerveau premium de planification ? `AMIRAL_BRAIN=fable amiral` (facturé en credits après le 11 juillet).
 
 ## Installation
 

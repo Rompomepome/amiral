@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# amiral-report — turn your benchmark run into a shareable quota report.
+# 100% LOCAL AND VOLUNTARY: this script sends nothing anywhere. It asks
+# you for YOUR numbers, prints a BENCHMARKS.md table row, and builds a
+# prefilled GitHub issue URL that YOU choose to open (or not).
+# That's the whole data pipeline: your terminal -> your eyes -> a public
+# issue you post yourself. No telemetry, no endpoint, no surprises.
+set -uo pipefail
+
+REPO="Rompomepome/amiral"
+
+ask() {  # ask "Question" "default"
+  local q="$1" d="${2:-}" a
+  if [ -n "$d" ]; then printf "%s [%s]: " "$q" "$d" >&2; else printf "%s: " "$q" >&2; fi
+  read -r a </dev/tty 2>/dev/null || read -r a || a=""
+  echo "${a:-$d}"
+}
+
+echo ""
+echo "⚓ amiral-report — package your benchmark numbers (local only)"
+echo "   Tip: run the 3 configs from BENCHMARKS.md first, note tokens"
+echo "   via /usage or ccusage, then answer below. Enter skips."
+echo ""
+
+CCV="$(claude --version 2>/dev/null | head -1 || echo unknown)"
+TASK=$(ask "Task type (e.g. 'Next.js feature, ~45min')" "")
+CCVER=$(ask "Claude Code version" "$CCV")
+A=$(ask "A — naive frontier (tokens or % of window)" "not run")
+B=$(ask "B — amiral (tokens or % of window)" "")
+C=$(ask "C — matelot / pure worker (tokens or %)" "not run")
+VER=$(ask "Did ./verify.sh pass on the amiral run? (yes/no)" "yes")
+NOTE=$(ask "One-line note (optional)" "")
+
+DATE="$(date +%Y-%m-%d)"
+ROW="| $DATE | $TASK | $CCVER | $A | $B | $C | $VER | @your-handle |"
+
+BODY="**Task:** $TASK
+**Claude Code version:** $CCVER
+
+**Before** (naive frontier): $A
+**After** (amiral): $B
+**Baseline** (matelot): $C
+**verify.sh passed:** $VER
+**Note:** $NOTE
+
+**BENCHMARKS.md row:**
+\`\`\`
+$ROW
+\`\`\`
+_Reported with amiral-report (local, voluntary)._"
+
+TITLE="Quota report: $TASK"
+
+echo ""
+echo "── Your BENCHMARKS.md row ──────────────────────────────"
+echo "$ROW"
+echo "────────────────────────────────────────────────────────"
+echo ""
+echo "Nothing has been sent. To share it publicly (thank you!):"
+
+if command -v python3 >/dev/null 2>&1; then
+  URL=$(python3 - "$TITLE" "$BODY" <<'PY'
+import sys, urllib.parse
+t, b = sys.argv[1], sys.argv[2]
+print("https://github.com/Rompomepome/amiral/issues/new?title=%s&body=%s&labels=quota-report"
+      % (urllib.parse.quote(t), urllib.parse.quote(b)))
+PY
+)
+  echo ""
+  echo "  Open this prefilled issue (review it, then submit):"
+  echo "  $URL"
+elif command -v gh >/dev/null 2>&1; then
+  echo ""
+  echo "  Or with the GitHub CLI (runs from YOUR account, you confirm):"
+  echo "  gh issue create --repo $REPO --title \"$TITLE\" --label quota-report --body '<paste the block above>'"
+else
+  echo ""
+  echo "  Copy the block above into a new issue at:"
+  echo "  https://github.com/$REPO/issues/new"
+fi
+echo ""

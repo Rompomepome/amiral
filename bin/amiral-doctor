@@ -32,10 +32,10 @@ if [ -f "$CLAUDE_DIR/CLAUDE.md" ] && grep -q 'amiral-policy.md' "$CLAUDE_DIR/CLA
 else
   warn "policy not imported in $CLAUDE_DIR/CLAUDE.md (plugin install covers agents/skills but not the global policy)"
 fi
-M=0; for a in implementer grunt reviewer corsaire; do [ -f "$CLAUDE_DIR/agents/$a.md" ] && M=$((M+1)); done
-if [ "$M" = "4" ]; then ok "4 fleet agents installed"; else
+M=0; for a in implementer grunt reviewer corsaire advisor; do [ -f "$CLAUDE_DIR/agents/$a.md" ] && M=$((M+1)); done
+if [ "$M" = "5" ]; then ok "5 fleet agents installed"; else
   # plugin path: agents live in the plugin cache, not ~/.claude/agents
-  warn "$M/4 agents in $CLAUDE_DIR/agents (fine if installed via /plugin — check /agents inside a session)"
+  warn "$M/5 agents in $CLAUDE_DIR/agents (fine if installed via /plugin — check /agents inside a session)"
 fi
 [ -f "$CLAUDE_DIR/amiral-profiles.sh" ] && ok "shell profiles present" || warn "shell profiles not in $CLAUDE_DIR (curl them from the repo)"
 
@@ -58,12 +58,22 @@ echo "  hands: ${AMIRAL_HANDS:-sonnet (default)}"
 case "${AMIRAL_BRAIN:-opus}" in
   opus*)  ok "brain=opus: included on Max; on Pro, Claude Code serves Sonnet within your plan. No credits needed." ;;
   sonnet*) ok "brain=sonnet: lightest footprint, fully inside any paid plan." ;;
-  fable*) warn "brain=fable: from July 8, 2026 Fable is usage-credits only on subscriptions (no auto-fallback — access stops if credits are off). Great as a premium planning brain; for a no-credit fleet use the default (opus) or AMIRAL_BRAIN=sonnet." ;;
+  fable*) warn "brain=fable: from July 12, 2026 Fable is usage-credits only on subscriptions (no auto-fallback — access stops if credits are off). Great as a premium planning brain; for a no-credit fleet use the default (opus) or AMIRAL_BRAIN=sonnet." ;;
 esac
 case "${AMIRAL_HANDS:-sonnet}" in
   claude-*) ok "hands pinned to a full model ID (most robust)" ;;
   *) warn "hands uses an alias ('${AMIRAL_HANDS:-sonnet}'). If workers show the brain model in /agents, pin it: export AMIRAL_HANDS=claude-sonnet-5" ;;
 esac
+
+ADV="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/agents/advisor.md"
+if [ -f "$ADV" ] && [ -f "$PREFS" ]; then
+  ADV_MODEL="$(grep '^model:' "$ADV" | awk '{print $2}')"
+  if [ -n "${AMIRAL_BRAIN:-}" ] && [ "$ADV_MODEL" != "$AMIRAL_BRAIN" ]; then
+    warn "advisor model ($ADV_MODEL) != your brain ($AMIRAL_BRAIN) — run amiral-setup to realign (the advisor should BE your brain)"
+  else
+    ok "advisor agent aligned with your brain ($ADV_MODEL)"
+  fi
+fi
 
 echo "-- Current project --"
 if [ -x ./verify.sh ]; then

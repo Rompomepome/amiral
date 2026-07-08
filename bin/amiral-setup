@@ -21,7 +21,7 @@ echo "                         → brain: Fable    (metered after Jul 7, 2026)"
 echo "  4) Not sure / just pick a safe default    → brain: Opus"
 echo ""
 printf "Enter 1-4 [4]: "
-read -r choice </dev/tty || choice=4
+read -r choice </dev/tty 2>/dev/null || read -r choice || choice=4
 case "${choice:-4}" in
   1) BRAIN=sonnet;  LABEL="Pro (Sonnet brain)";;
   2) BRAIN=opus;    LABEL="Max (Opus brain)";;
@@ -36,6 +36,20 @@ cat > "$PREFS" << PREFEOF
 export AMIRAL_BRAIN=$BRAIN
 export AMIRAL_HANDS=sonnet
 PREFEOF
+
+# Align the advisor agent's model with the chosen brain, so the
+# "executor consults the brain" shape uses YOUR brain (e.g. Sonnet
+# executor + Fable advisor — the shape Anthropic benchmarked).
+ADV="$CLAUDE_DIR/agents/advisor.md"
+if [ -f "$ADV" ]; then
+  sed "s/^model: .*/model: $BRAIN/" "$ADV" > "$ADV.tmp" && mv "$ADV.tmp" "$ADV"
+  echo "  advisor agent pinned to: $BRAIN"
+  if [ "$BRAIN" = "sonnet" ]; then
+    echo "  note: on Pro the advisor equals the executor tier; the advisor"
+    echo "  shape shines with a bigger brain (opus/fable). Orchestrator"
+    echo "  mode (plain amiral) is your best default."
+  fi
+fi
 
 echo ""
 echo "✓ Saved to $PREFS  →  $LABEL, workers on Sonnet."

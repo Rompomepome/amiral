@@ -1,5 +1,59 @@
 # Changelog
 
+## v0.8.0 - 2026-07-07
+Four additions, all inside the "discipline, not a runtime" line — no
+server, no proxy, nothing to host:
+- **amiral-report**: community benchmarks WITHOUT telemetry. A local
+  wizard packages the user's own numbers into a BENCHMARKS.md row and a
+  prefilled public GitHub issue they review and post themselves. Nothing
+  is ever sent automatically — there is no endpoint. Consent by design;
+  the data lands in the open where it helps everyone. (README gains an
+  explicit "No telemetry, ever" design principle.)
+- **amiral-savings**: a local cost estimator. `amiral-savings --tokens 5
+  --brain fable --hands sonnet --plan 20` prints all-frontier vs amiral
+  cost and your savings. Pure math, editable price table, honest "this is
+  an estimate, measure real numbers with BENCHMARKS.md".
+- **Codex port** (`ports/codex/`): run amiral's discipline with Codex via
+  the AGENTS.md standard, including using Codex AS the corsaire — an
+  adversarial second opinion on a different model family. (Answers the
+  most-asked question after launch.)
+- **OpenCode port** (`ports/opencode/`): the brain/hands split on
+  OpenCode's 75+ providers. The pattern on any model OpenCode can reach,
+  via config, not a bridge.
+- **The advisor follows your brain — Fable-ready everywhere.** The
+  advisor agent's model is now aligned to your chosen brain by
+  amiral-setup (and checked by the doctor). Pick "credits" at setup and
+  `amiral-advisor` gives you the exact shape Anthropic benchmarked:
+  Sonnet executor + Fable advisor. Every shape (orchestrator, advisor,
+  loop, savings) now runs with Fable as the brain via one setting.
+- **Autonomous-loop guide** (`docs/autonomous-loop.md`): how to drive
+  amiral in a Ralph-style loop safely — dedicated worktree, verify.sh as
+  the stop condition, corsaire still in the path, capped spend.
+
+The through-line: amiral stays 6 core files with no engine. "Works on all
+LLMs" means the discipline is *portable* to the tools that reach them
+(Codex, OpenCode, Aider, Cursor...) via an open standard — not a gateway
+we host. That restraint is the moat.
+
+
+## v0.7.0 - 2026-07-07
+- **New: advisor mode.** `amiral-advisor` runs you on the cheap model the
+  whole time and consults the expensive brain (new `advisor` agent) only
+  for hard calls — plan review, risky architecture, real tradeoffs, or
+  when stuck. This is the "executor + on-demand advisor" shape, alongside
+  the existing orchestrator shape. The policy routes hard judgment calls
+  to the advisor automatically. Fleet is now 5 agents.
+- **Anthropic's own numbers, cited.** README and BENCHMARKS now reference
+  Anthropic's "plan big, execute small" cookbook: a reference run at
+  ~$1.61 team vs ~$4 all-frontier (~2.5x cheaper, ~3x faster, 80%+ tokens
+  at worker rate) — with the honest caveat that these are Anthropic's
+  figures, not independently replicated, and your ratio depends on your
+  task. Solves the "no benchmarks" gap by citing a real, linkable source
+  instead of unverified numbers.
+- Fable metering cliff dates updated: Anthropic extended inclusion
+  through July 11 (was July 7); credits-only from July 12.
+
+
 ## v0.6.5 - 2026-07-07
 Documentation cleanup pass (post-launch tidy):
 - Fixed install.sh final message: it still said AMIRAL_BRAIN "default

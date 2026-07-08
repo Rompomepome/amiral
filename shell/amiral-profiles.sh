@@ -40,6 +40,15 @@ amiral-solo() {
   claude --model sonnet --effort high "$@"
 }
 
+# ADVISOR MODE. You run on the cheap model the whole time; it consults
+# the expensive brain (the `advisor` agent) only for hard calls. This is
+# the "executor + on-demand advisor" pattern: most tokens billed at the
+# worker rate, frontier reasoning only where it changes the outcome.
+amiral-advisor() {
+  _amiral_load_prefs
+  claude --model "${AMIRAL_HANDS:-sonnet}" --effort high "$@"
+}
+
 # Workers follow their own frontmatter (Haiku for grunt work).
 amiral-fine() {
   _amiral_load_prefs
@@ -63,6 +72,16 @@ matelot() {
 # Re-run the one-time plan setup anytime.
 amiral-setup() {
   bash "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/amiral-setup" "$@"
+}
+
+# Estimate what the pattern saves vs all-frontier (local math).
+amiral-savings() {
+  bash "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/amiral-savings" "$@"
+}
+
+# Package YOUR benchmark numbers into a shareable issue (local, voluntary).
+amiral-report() {
+  bash "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/amiral-report" "$@"
 }
 
 # Fleet health check.

@@ -43,7 +43,7 @@ else
 fi
 
 # 2. Agents
-for a in implementer grunt reviewer corsaire; do
+for a in implementer grunt reviewer corsaire advisor; do
   backup_if_exists "$CLAUDE_DIR/agents/$a.md"
   cp "$REPO_DIR/agents/$a.md" "$CLAUDE_DIR/agents/$a.md"
   echo "  ok  agents/$a.md"
@@ -70,6 +70,12 @@ echo "  ok  amiral-trust"
 cp "$REPO_DIR/bin/amiral-setup" "$CLAUDE_DIR/amiral-setup"
 chmod +x "$CLAUDE_DIR/amiral-setup"
 echo "  ok  amiral-setup"
+cp "$REPO_DIR/bin/amiral-savings" "$CLAUDE_DIR/amiral-savings"
+chmod +x "$CLAUDE_DIR/amiral-savings"
+echo "  ok  amiral-savings"
+cp "$REPO_DIR/bin/amiral-report" "$CLAUDE_DIR/amiral-report"
+chmod +x "$CLAUDE_DIR/amiral-report"
+echo "  ok  amiral-report"
 
 case "${SHELL:-}" in
   */zsh) RC_FILE="~/.zshrc" ;;

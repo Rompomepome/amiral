@@ -34,6 +34,11 @@ function amiral-setup {
     }
     "# amiral preferences (amiral-setup)`nexport AMIRAL_BRAIN=$brain`nexport AMIRAL_HANDS=sonnet" |
         Set-Content -Path $prefs -Encoding UTF8
+    $adv = Join-Path $dir "agents\advisor.md"
+    if (Test-Path $adv) {
+        (Get-Content $adv) -replace '^model: .*', "model: $brain" | Set-Content $adv
+        Write-Host "  advisor agent pinned to: $brain"
+    }
     Write-Host "`n✓ Saved: brain=$brain, hands=sonnet. Just type 'amiral' from now on.`n"
 }
 
@@ -57,6 +62,11 @@ function amiral-solo {
     try { claude --model sonnet --effort high @args }
     finally { Remove-Item Env:CLAUDE_CODE_SUBAGENT_MODEL -ErrorAction SilentlyContinue }
 }
+function amiral-advisor {
+    _Amiral-LoadPrefs
+    claude --model (Get-AmiralHands) --effort high @args
+}
+
 function amiral-fine { _Amiral-LoadPrefs; claude --model (Get-AmiralBrain) --effort high @args }
 function amiral-ultra {
     _Amiral-LoadPrefs
