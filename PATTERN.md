@@ -40,11 +40,16 @@ gates + a doctor for the silent failure modes.
    gate (`verify.sh` exit 0) defines "done". Where the harness supports
    it, enforce with a hook; where it doesn't, the brain re-runs the gate
    itself before accepting.
-6. **An adversarial pass before risk:** for changes touching auth,
+6. **Two wirings, one idea.** Orchestrator: the brain plans and fans
+   out to workers (best when work parallelizes). Advisor: a cheap
+   executor runs the loop and consults the brain only on hard judgment
+   calls (best for long single-threaded work). Both keep most tokens on
+   the cheap tier; pick per task, not per religion.
+7. **An adversarial pass before risk:** for changes touching auth,
    money, user input or data, a pre-mortem attacker (fresh context,
    read-only) assumes the shipped feature already failed and hunts the
    cause — before users do.
-7. **A human gate before irreversibility:** no commit/push/deploy
+8. **A human gate before irreversibility:** no commit/push/deploy
    without explicit approval.
 
 ## Implementation map per CLI

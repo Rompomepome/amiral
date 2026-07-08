@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.8.2 - 2026-07-08
+Honesty & consistency audit (every page re-read):
+- **BENCHMARKS.md rewritten.** The "seeded soon" promise is gone —
+  replaced by a Results table with what actually exists: Anthropic's
+  cookbook reference numbers and the author's observed session ($4.84,
+  $4.51 frontier-only, Claude Code's own "75% subagent-heavy" panel).
+  New section documents the two contamination traps that invalidated the
+  author's first A/B attempt (global policy leaking into the naive run;
+  memory recognizing the task) and the corrected protocol. Community
+  rows land via amiral-report in issue #3.
+- **"6 markdown files" was false since v0.7** (advisor made it 7).
+  Fixed in README and landscape. Precision is the positioning.
+- how-it-works: five agent files, advisor documented.
+- Roadmap deduplicated; dead promises removed; open items now link to
+  votable issues #1 (auto-effort) and #2 (Aider port).
+- CONTRIBUTING + quota-report template point to amiral-report.
+- PATTERN.md gains the two wirings (orchestrator / advisor) as a
+  universal principle. README.fr catches up (5 agents, advisor, savings,
+  report).
+
+
 ## v0.8.1 - 2026-07-08
 - **Fix: hero image reference.** The README pointed at amiral-hero.png
   while the shipped asset is amiral-hero.jpg (a local jpg conversion got

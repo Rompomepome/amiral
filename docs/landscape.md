@@ -46,7 +46,7 @@ amiral's [BENCHMARKS.md](../BENCHMARKS.md) protocol is built on it.
 
 | | Ruflo | Code Kit | amiral |
 | --- | --- | --- | --- |
-| Footprint | 250k+ LOC platform | 18-agent kit | **6 markdown files** |
+| Footprint | 250k+ LOC platform | 18-agent kit | **7 markdown files** |
 | Primitives | Custom engine + MCP | Custom agents | **Native Claude Code only** |
 | Works on Pro/Max subscription | ❌ API only | ✅ | ✅ |
 | Survives CC updates | Depends on engine | Mostly | **Yes — it's just config** |

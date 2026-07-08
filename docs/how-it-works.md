@@ -10,7 +10,7 @@ teaches the orchestrator role, the fan-out discipline, and the
 verification gates. It is deliberately model-agnostic: it applies even
 in `matelot` mode.
 
-**Layer 2 — Worker definitions (the agents).** Four markdown files in
+**Layer 2 — Worker definitions (the agents).** Five markdown files in
 `~/.claude/agents/`, each with YAML frontmatter declaring its model,
 tools and effort:
 
@@ -19,6 +19,9 @@ tools and effort:
 - `reviewer` (sonnet, read-only tools) — fresh-context review
 - `corsaire` (sonnet, read-only tools) — licensed adversary: pre-mortem
   attack on risky or vibe-coded changes
+- `advisor` (your brain model, read-only) — the expensive brain consulted
+  on demand by a cheaper executor for hard judgment calls; its model is
+  pinned to your chosen brain by amiral-setup
 
 The main agent reads the `description` field to decide when to
 delegate — write descriptions like tool descriptions.

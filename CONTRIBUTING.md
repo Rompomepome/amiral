@@ -16,3 +16,5 @@ Rules of the house:
 - Test with a fake HOME: `HOME=/tmp/x bash install.sh` twice, check no
   duplicate import
 - English in repo files; README.fr.md mirrors the essentials
+
+> Tip: run `amiral-report` after a benchmark — it formats your numbers and prefills the quota-report issue.

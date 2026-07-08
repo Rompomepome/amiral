@@ -5,6 +5,8 @@ title: "[quota] "
 labels: quota-data
 ---
 
+> Tip: `amiral-report` fills all of this for you and prefills the issue.
+
 **Task type** (feature / refactor / audit / other):
 
 **Claude Code version** (`claude --version`):

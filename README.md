@@ -268,7 +268,7 @@ One repo, three layers: universal pattern → portable discipline → Claude Cod
 
 The 2026 orchestration landscape is crowded with platforms — the leading one ships **250,000+ lines** of engine and is **API-only, blocked on Pro/Max subscriptions**. amiral takes the opposite bet:
 
-- **6 markdown files** and native Claude Code primitives. Nothing to adopt, no engine to break on the next release.
+- **7 markdown files** and native Claude Code primitives. Nothing to adopt, no engine to break on the next release.
 - **Works on your subscription.** No API key required — it's just configuration. (With a Fable brain after July 11, only the *brain* needs usage credits — the whole point is minimizing those tokens. Or run `AMIRAL_BRAIN=opus` and stay fully inside your plan.)
 - When you truly need swarm topologies and consensus protocols, graduate to a framework — and take the amiral policy with you.
 
@@ -301,21 +301,17 @@ Full honest comparison (Ruflo, Code Kit, Octopus, Maestro, opusplan): [docs/land
 - [x] Plugin packaging (marketplace install)
 - [x] Windows (PowerShell) profiles
 - [x] `verify.sh` template — Next.js; Python & Rust welcome via PR
-- [x] Benchmark protocol
-- [ ] Seeded benchmark results (maintainer's own numbers — in progress)
+- [x] Benchmark protocol + [results table](BENCHMARKS.md) (Anthropic reference numbers + observed data; community A/B rows land via `amiral-report` in [#3](https://github.com/Rompomepome/amiral/issues/3))
 - [x] Optional `SubagentStop` hook: hard verification gate on worker results
 - [x] Portable pattern spec + AGENTS.md port (works beyond Claude Code)
-- [ ] Ralph-loop integration guide: lean routing inside autonomous loops
-- [x] `amiral-savings`: local cost estimator (done)
-- [x] Codex + OpenCode ports in `ports/` (done)
-- [x] Autonomous-loop guide in `docs/autonomous-loop.md` (done)
-- [ ] `amiral-auto-effort`: let the orchestrator pick effort per task (xhigh/max/ultracode) — pending Anthropic's own `auto` effort maturing
-- [ ] Community ports/ (OpenCode agent config, Roo mode set, Codex two-session script) — PRs open
-- [x] `amiral doctor`: one command to check install, version, and routing config
+- [x] `amiral-savings` local cost estimator · Codex + OpenCode ports · [autonomous-loop guide](docs/autonomous-loop.md)
+- [x] `amiral doctor` + `amiral-report` (share your numbers without telemetry)
+- [ ] `amiral-auto-effort`: per-task effort selection — vote/discuss in [#1](https://github.com/Rompomepome/amiral/issues/1)
+- [ ] More ports: Aider next — vote in [#2](https://github.com/Rompomepome/amiral/issues/2); Roo mode set, Codex two-session script welcome via PR
 
 ## 🤝 Contributing
 
-The most valuable PR is a **benchmark row** ([BENCHMARKS.md](BENCHMARKS.md) protocol, "Quota report" issue template). Also welcome: worker agents, stack policies, fixes tracking Claude Code releases. See [CONTRIBUTING.md](CONTRIBUTING.md).
+The most valuable PR is a **benchmark row** — run [`amiral-report`](bin/amiral-report) after a benchmark, it formats your numbers and prefills the issue ([protocol](BENCHMARKS.md), collected in [#3](https://github.com/Rompomepome/amiral/issues/3)). Also welcome: worker agents, stack policies, fixes tracking Claude Code releases. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 📄 License
 
