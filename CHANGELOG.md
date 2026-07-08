@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.8.1 - 2026-07-08
+- **Fix: hero image reference.** The README pointed at amiral-hero.png
+  while the shipped asset is amiral-hero.jpg (a local jpg conversion got
+  overwritten during the v0.8.0 sync) — the hero was broken on the repo
+  page. Now .jpg everywhere.
+- README scannability pass (inspired by the best-presented CLI repos):
+  a quick-links row under the badges (Get started · Two shapes · Savings
+  · Benchmarks · Ports · How it works · Français) and a "Main takeaways"
+  block of one-liners right after the demo, so a visitor gets the whole
+  pitch in five seconds.
+
+
 ## v0.8.0 - 2026-07-07
 Four additions, all inside the "discipline, not a runtime" line — no
 server, no proxy, nothing to host:

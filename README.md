@@ -1,6 +1,6 @@
 # ⚓ amiral
 
-<img src="assets/amiral-hero.png" width="230" align="right" alt="amiral — the old sea dog who commands the fleet"/>
+<img src="assets/amiral-hero.jpg" width="230" align="right" alt="amiral — the old sea dog who commands the fleet"/>
 
 **The admiral doesn't row.** Orchestrator/worker model routing for Claude Code: an expensive brain (Fable 5, Opus) plans, delegates and verifies — cheap hands (Sonnet, Haiku) do the token-heavy execution.
 
@@ -11,11 +11,23 @@
 ![License](https://img.shields.io/badge/license-MIT-white?style=flat&labelColor=555)
 ![Pattern](https://img.shields.io/badge/pattern-orchestrator%2Fworkers-white?style=flat&labelColor=555)
 
+**[🚀 Get started](#-try-it-in-5-minutes) · [🧭 Two shapes](#-two-shapes-both-included) · [🧮 Savings](#-why-this-saves-real-money) · [📊 Benchmarks](BENCHMARKS.md) · [🌍 Ports](ports/) · [🧠 How it works](docs/how-it-works.md) · [🇫🇷 Français](README.fr.md)**
+
 <p align="center">
   <img src="assets/amiral-demo.gif" alt="amiral in action: one word, then the admiral plans, delegates and verifies" width="820"/>
   <br/>
   <em>One word. The admiral judges each task and routes it — trivial edits done inline, real features delegated, everything verified.</em>
 </p>
+
+## ⚡ Main takeaways
+
+- **One word.** Type `amiral`, talk normally. It routes every task itself.
+- **Works inside the plan you already pay for.** No API key, nothing to configure.
+- **Frontier plans, cheap models execute.** Anthropic's own reference run: ~2.5x cheaper, ~3x faster.
+- **Two shapes included:** orchestrator and advisor — the exact shapes from Anthropic's evals.
+- **5 specialized agents**, including an adversarial security pass (the corsaire).
+- **Portable** to Codex, OpenCode, Aider and 25+ tools via the open AGENTS.md standard.
+- **No telemetry, ever.** Nothing hosted, nothing phones home.
 
 > [!TIP]
 > Jump to [**How to Use**](#-how-to-use) for the 2-minute setup — installer or plugin, your pick.
