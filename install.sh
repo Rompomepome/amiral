@@ -76,6 +76,17 @@ echo "  ok  amiral-savings"
 cp "$REPO_DIR/bin/amiral-report" "$CLAUDE_DIR/amiral-report"
 chmod +x "$CLAUDE_DIR/amiral-report"
 echo "  ok  amiral-report"
+cp "$REPO_DIR/bin/amiral-butin" "$CLAUDE_DIR/amiral-butin"
+chmod +x "$CLAUDE_DIR/amiral-butin"
+mkdir -p "$CLAUDE_DIR/butin"
+cp "$REPO_DIR/lib/butin/core.awk" "$CLAUDE_DIR/butin/core.awk"
+cp "$REPO_DIR/lib/butin/pricing.tsv" "$CLAUDE_DIR/butin/pricing.tsv"
+cp "$REPO_DIR/adapters/claude-code/butin-collect.sh" "$CLAUDE_DIR/butin/butin-collect.sh"
+cp "$REPO_DIR/adapters/claude-code/adapter.sh" "$CLAUDE_DIR/butin/adapter.sh"
+chmod +x "$CLAUDE_DIR/butin/butin-collect.sh"
+cp "$REPO_DIR/bin/amiral-journal" "$CLAUDE_DIR/amiral-journal"
+chmod +x "$CLAUDE_DIR/amiral-journal"
+echo "  ok  amiral-butin (+ core, collector, journal)"
 
 case "${SHELL:-}" in
   */zsh) RC_FILE="~/.zshrc" ;;

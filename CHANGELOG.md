@@ -1,5 +1,100 @@
 # Changelog
 
+## v0.10.1 - 2026-07-09
+Completion pass — everything decided in the three review passes is now
+either shipped or explicitly on the recorded roadmap (docs/butin-spec-v2.md):
+- **`amiral-butin init` / `rebaseline`**: first-run config with baseline
+  auto-detection, the frontier-baseline confirmation (the Fable trap —
+  an auto-detected frontier baseline would inflate savings forever),
+  atomic write. History keeps the baseline of its time.
+- **Escalations are real now.** Conservative heuristic in the collector:
+  same session, cheaper→pricier within 15 min (grunt or same agent) →
+  the wasted cheap attempt is charged AGAINST amiral. May over-penalize;
+  never inflates.
+- **`--haircut=N`**: display-time conservative reduction of the
+  counterfactual; the decomposition bias (each worker re-reads context)
+  is named in --detail.
+- **Degenerate-state message** when brain = hands = baseline: "the butin
+  measures cost, not quality."
+- **`pricing_version` stamped on every event**; report warns when the
+  table is >3 months old; refresh is manual-only (nothing phones home).
+  Unknown future schema versions are skipped and counted, never crashed.
+- **Journal `note` mode**: same provenance block as a git note (ref
+  `amiral`) — survives squash-merges. Funnel wired: savings → butin →
+  report. Doctor: last-event age + collector-wired check. README gains
+  the "Prove it" section + fleet table rows (butin, journal, FLEET.md);
+  POSIX-only scoping stated; FR parity.
+Battery: 16/16 (was 9).
+
+
+## v0.10.0 - 2026-07-09
+The accountability release: route smart, verify everything, prove it in git.
+- **Butin hardened (critical path).** A real collector (SubagentStop →
+  worker events; Stop --brain → brain event) with COVERAGE: unextractable
+  tokens become "unmeasured" events, never invented numbers. LC_ALL=C
+  everywhere data is written (a French locale writing 0,01 corrupted the
+  whole log — fixed by rule). Atomic single-write lines (<PIPE_BUF) with
+  event ids + read-time dedup. Cache priced as cache, category by
+  category. Brain premium = max(0, real−counterfactual): a penalty,
+  never a credit. `verified` flows from the verify gate into events.
+  Golden transcript fixture + 9-test battery in CI.
+- **Journal de bord (new ship).** `amiral-journal enable` = per-repo git
+  hook adding provenance trailers: Amiral-Route, Amiral-Verified, and
+  Amiral-Attest (sha256 of verify.sh + staged diff — recomputable by
+  anyone; forging it means actually running the gate). Cost trailer is a
+  separate opt-in with a public-remote warning. `flag` prints the
+  pavillon badge — and refuses under 20 measured tasks. FLEET.md
+  template: AI-policy-as-code, committed and changed by PR, read by the
+  routing policy when present.
+- **GPT-5.6 day-one support + model-churn resilience.** Verified prices
+  for gpt-5.6-sol/terra/luna (source: openai.com, GA 2026-07-09; new
+  cache rule 1.25x write / 0.10x read) in the table. New
+  `amiral-butin add-model`: price any new model yourself the day it
+  ships — no repo release needed. Unmeasured tasks now NAME their model
+  in the report with the add-model hint (silence turned into action).
+  Codex port maps the family: brain=sol, hands=terra, grunt=luna.
+- **Doctor** gains a butin section (log present, coverage, collector
+  errors). Spec v2 decisions recorded in docs/butin-spec-v2.md
+  (MUST/SHOULD/roadmap/refused — la vigie, le cap, Fleet Events).
+Not a framework. A fleet of small ships — board only what you need.
+
+
+## v0.9.0 - 2026-07-08
+- **New: butin (savings) — amiral proves its own ROI.** `amiral-butin`
+  reads your actually-routed tasks and shows a counterfactual saving:
+  the SAME tokens priced at your baseline model vs the cheap model amiral
+  chose. The number shown is NET — escalations and failed cheap routes
+  are counted AGAINST amiral (a bad route can make a task net-negative,
+  by design). 100% local, no account, no network.
+  - **Portable architecture (3 layers, like amiral itself):** a universal
+    core (lib/butin/, zero harness dependency — proven by a mock-adapter
+    test on gpt-5 vs gpt-5-mini), a port contract (ports/BUTIN.md), and a
+    claude-code adapter (adapters/claude-code/). Adding Codex/OpenCode
+    later touches only a new adapter, never the core.
+  - **Subscription mode (the cliff angle):** on Pro/Max the hero metric is
+    premium tokens avoided (measured, not estimated), not abstract
+    dollars — your real currency is the quota. API-equivalent value shown
+    as secondary. Never converts tokens to "% of window" (Anthropic's
+    limit formula isn't public — we show what we measure, never guess).
+  - Multi-provider price table from day one (Anthropic, OpenAI, Google,
+    Mistral), refreshable but offline-safe.
+  - Honesty is in the design: baseline + its source, the "API-equivalent
+    value" label, and escalation costs are shown, not hidden.
+  This is v0.1 of the butin (SPEC §7): core + port + one adapter +
+  `amiral-butin` command. Statusline and weekly HTML digest come next.
+
+
+## v0.8.3 - 2026-07-08
+- Added IDEAS.md: a feedback log capturing suggestions from real
+  conversations (context optimization / governed retrieval from Krishna
+  Challa of MonkDB; token-efficiency framing from Venugopala Kotipalli;
+  the harness-optimizer landscape around Tokenade/THOL). Each with an
+  honest note on whether it fits amiral's line. Roadmap follows terrain,
+  not guesses — an idea graduates to a build only when it also draws
+  community votes on an issue, and only if it stays within the line
+  (markdown discipline, nothing hosted).
+
+
 ## v0.8.2 - 2026-07-08
 Honesty & consistency audit (every page re-read):
 - **BENCHMARKS.md rewritten.** The "seeded soon" promise is gone —

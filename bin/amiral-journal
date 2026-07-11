@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# amiral journal de bord — provenance for AI-assisted commits. Opt-in,
+# per-repo, zero server: trailers live in git, the proof travels with
+# the code. "Ship AI-written code you can defend."
+# Commands: enable [--with-cost] | disable | status | attest | flag
+export LC_ALL=C
+set -uo pipefail
+AMIRAL_HOME="${AMIRAL_HOME:-$HOME/.amiral}"
+LOG="$AMIRAL_HOME/butin.jsonl"
+CMD="${1:-status}"
+
+repo_root() { git rev-parse --show-toplevel 2>/dev/null; }
+hook_path() { echo "$(repo_root)/.git/hooks/prepare-commit-msg"; }
+
+attest_hash() {
+  # Deterministic, recomputable by anyone: sha256(verify.sh + staged diff).
+  # Forging it means actually running the same gate on the same diff.
+  { cat ./verify.sh 2>/dev/null; git diff --cached 2>/dev/null; } \
+    | shasum -a 256 2>/dev/null | awk '{print substr($1,1,16)}'
+}
+
+case "$CMD" in
+  enable)
+    ROOT=$(repo_root) || { echo "not a git repo"; exit 1; }
+    WITH_COST=0; [ "${2:-}" = "--with-cost" ] && WITH_COST=1
+    # public-remote warning for the cost trailer (opt-in stage 3)
+    if [ "$WITH_COST" = "1" ] && git remote -v 2>/dev/null | grep -qE "github.com|gitlab.com"; then
+      echo "⚠ public remote detected: Amiral-Net-Saved will be visible to everyone. Ctrl-C to abort, Enter to continue."
+      read -r _ </dev/tty 2>/dev/null || true
+    fi
+    mkdir -p "$ROOT/.git/hooks"
+    cat > "$(hook_path)" << HOOK
+#!/usr/bin/env bash
+# installed by amiral-journal (remove: amiral-journal disable)
+export LC_ALL=C
+MSG="\$1"
+grep -q "Amiral-Route:" "\$MSG" && exit 0
+AMIRAL_HOME="\${AMIRAL_HOME:-\$HOME/.amiral}"
+ROUTES=\$(tail -50 "\$AMIRAL_HOME/butin.jsonl" 2>/dev/null \
+  | grep -v unmeasured | grep -oE '"agent":"[^"]*","chosen_model":"[^"]*"' \
+  | sed 's/"agent":"//;s/","chosen_model":"/=/;s/"//' | sort -u | paste -sd' ' -)
+VERIF="unknown"
+[ -n "\$(find "\$AMIRAL_HOME/state" -name 'verify-ok-*' -mmin -60 2>/dev/null | head -1)" ] && VERIF="green (verify.sh, fresh)"
+ATTEST=\$({ cat ./verify.sh 2>/dev/null; git diff --cached 2>/dev/null; } | shasum -a 256 2>/dev/null | awk '{print substr(\$1,1,16)}')
+{
+  echo ""
+  [ -n "\$ROUTES" ] && echo "Amiral-Route: \$ROUTES"
+  echo "Amiral-Verified: \$VERIF"
+  echo "Amiral-Attest: sha256:\$ATTEST"
+HOOK
+    if [ "$WITH_COST" = "1" ]; then
+      cat >> "$(hook_path)" << 'HOOK'
+  NET=$(awk -F'\t' '/^NET/{print $2}' <(awk -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk" "$AMIRAL_HOME/butin.jsonl" 2>/dev/null) 2>/dev/null)
+  [ -n "$NET" ] && echo "Amiral-Net-Saved: \$$NET (net, escalations deducted)"
+HOOK
+    fi
+    echo '} >> "$MSG"' >> "$(hook_path)"
+    chmod +x "$(hook_path)"
+    echo "⚓ journal enabled for this repo (trailers: Route + Verified + Attest$( [ "$WITH_COST" = "1" ] && echo " + Net-Saved" ))."
+    echo "  disable anytime: amiral-journal disable" ;;
+  disable)
+    rm -f "$(hook_path)" && echo "journal disabled (hook removed)." ;;
+  status)
+    if [ -x "$(hook_path)" 2>/dev/null ]; then echo "journal: ENABLED in $(repo_root)"; else echo "journal: disabled here (enable: amiral-journal enable)"; fi ;;
+  note)
+    # squash-merge survivors: same provenance as a git note on HEAD.
+    # Attest covers the COMMITTED diff (git show HEAD), recomputable.
+    ROOT=$(repo_root) || { echo "not a git repo"; exit 1; }
+    ROUTES=$(tail -50 "$LOG" 2>/dev/null | grep -v unmeasured \
+      | grep -oE '"agent":"[^"]*","chosen_model":"[^"]*"' \
+      | sed 's/"agent":"//;s/","chosen_model":"/=/;s/"//' | sort -u | paste -sd' ' -)
+    AH=$({ cat ./verify.sh 2>/dev/null; git show --format= HEAD 2>/dev/null; } \
+      | shasum -a 256 2>/dev/null | awk '{print substr($1,1,16)}')
+    N="Amiral-Route: ${ROUTES:-unknown}
+Amiral-Attest: sha256:$AH (verify.sh + committed diff)
+Amiral-Noted: $(date -u +%FT%TZ)"
+    git notes --ref=amiral add -f -m "$N" HEAD && echo "⚓ note attached to HEAD (ref: amiral)."
+    echo "  notes don't push by default: git push origin refs/notes/amiral" ;;
+  attest)
+    echo "Amiral-Attest: sha256:$(attest_hash)  (recompute: cat verify.sh + git diff --cached | sha256)" ;;
+  flag)
+    # pavillon — refuses to lie small (rule C3): >=20 measured tasks
+    MEAS=$(grep -c '"real_cost_usd"' "$LOG" 2>/dev/null || echo 0)
+    TOTAL=$(grep -c '"agent"' "$LOG" 2>/dev/null || echo 0)
+    if [ "${MEAS:-0}" -lt 20 ]; then
+      echo "pavillon: not enough data to share honestly yet ($MEAS/20 measured tasks)."; exit 1
+    fi
+    NET=$(awk -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk" "$LOG" 2>/dev/null | awk -F'\t' '/^NET/{print $2}')
+    echo "[![sailed with amiral](https://img.shields.io/badge/⚓_sailed_with_amiral-${MEAS}_tasks_·_net_%2B\$${NET}-2b4c7e)](https://github.com/Rompomepome/amiral/blob/main/BENCHMARKS.md)"
+    echo "coverage: $MEAS/$TOTAL measured · net of escalations & brain premium · methodology in BENCHMARKS.md" ;;
+  *) echo "usage: amiral-journal enable [--with-cost] | disable | status | attest | note | flag"; exit 1 ;;
+esac

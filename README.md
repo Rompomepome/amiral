@@ -27,6 +27,7 @@
 - **Two shapes included:** orchestrator and advisor — the exact shapes from Anthropic's evals.
 - **5 specialized agents**, including an adversarial security pass (the corsaire).
 - **Portable** to Codex, OpenCode, Aider and 25+ tools via the open AGENTS.md standard.
+- **Provable.** Opt-in git trailers (route, verified, attestation hash) — ship AI-written code you can defend.
 - **No telemetry, ever.** Nothing hosted, nothing phones home.
 
 > [!TIP]
@@ -110,6 +111,34 @@ pins the advisor agent to your brain, so `amiral-advisor` gives you
 Sonnet doing the work and Fable making the hard calls. Same mechanics
 with Opus on a Max plan, zero credits.
 
+## ⚓ The fleet of ships
+
+amiral is not a framework — it's a fleet of small, separately boardable
+ships. Board only what you need; read any of them in five minutes.
+
+- **amiral** (route) — the 7-file core: the brain plans, cheap hands
+  execute, nothing ships until the gate is green.
+- **butin** (measure) — `amiral-butin`: counterfactual NET savings from
+  your own routed tasks. Coverage shown, escalations and brain premium
+  deducted, cache priced as cache, 100% local. First run: `amiral-butin
+  init` detects your baseline (and refuses to strawman a frontier one
+  without your confirmation). Wire the collector once: [docs/butin.md](docs/butin.md).
+- **journal de bord** (prove) — `amiral-journal enable`: opt-in git
+  trailers per repo — `Amiral-Route`, `Amiral-Verified`, and
+  `Amiral-Attest` (a sha256 of verify.sh + the staged diff, recomputable
+  by anyone; forging it means running the real gate). Squash-merge
+  team? `amiral-journal note` attaches the same proof as a git note.
+  `FLEET.md` makes the routing policy part of the repo itself —
+  AI-policy-as-code, changed by PR ([template](templates/FLEET.md)).
+- **pavillon** — `amiral-journal flag` prints a shareable badge from
+  your butin data, and refuses to generate under 20 measured tasks.
+  The design encodes the honesty.
+
+Route smart, verify everything, prove it in git — the accountability
+layer for AI-assisted code, with nothing hosted and nothing phoning home.
+*(butin & journal are POSIX shell for now; PowerShell parity is tracked
+on the roadmap.)*
+
 ## 💡 The pattern
 
 Three levers, combined:
@@ -138,6 +167,9 @@ The pattern outlives any single model. That's the point.
 | 🅐 **grunt** | [`agents/grunt.md`](agents/grunt.md) | Mass mechanical work (renames, boilerplate, migrations). `model: haiku`, `effort: low`. |
 | 🅐 **reviewer** | [`agents/reviewer.md`](agents/reviewer.md) | Fresh-context review right after implementation. Read-only tools, prioritized report. |
 | 🧭 **advisor** | [`agents/advisor.md`](agents/advisor.md) | The expensive brain, consulted on demand: a cheap executor calls it for hard judgment calls (plan review, architecture, tradeoffs) then takes back control. Powers `amiral-advisor`. |
+| 💰 **butin** | [`bin/amiral-butin`](bin/amiral-butin) + [`lib/butin/`](lib/butin/) | Proves amiral's ROI from your own routed tasks: net counterfactual savings (escalations and brain premium deducted), coverage shown, 100% local. Wire once: [docs/butin.md](docs/butin.md). POSIX-only for now. |
+| 🧾 **journal** | [`bin/amiral-journal`](bin/amiral-journal) | Provenance for AI-assisted commits: opt-in git trailers (Route, Verified, Attest — a recomputable sha256 of verify.sh + the staged diff). `note` mode survives squash-merges. `flag` prints the pavillon badge (refuses under 20 measured tasks). |
+| 🗺️ **FLEET.md** | [`templates/FLEET.md`](templates/FLEET.md) | AI-policy-as-code: commit the fleet policy of THIS repo; amiral reads it and it overrides personal defaults. Changed by PR, like code. |
 | 🏴 **corsaire** | [`agents/corsaire.md`](agents/corsaire.md) | Licensed adversary: pre-mortem attack on risky or vibe-coded features — assumes it already failed in production, works backward to every cause. Read-only, hostile, concrete. |
 | 🅢 **/plan-ship** | [`skills/plan-ship/SKILL.md`](skills/plan-ship/SKILL.md) | One command: plan → delegate → verify → review → summary. Never commits without your OK. |
 | 📜 **Routing policy** | [`CLAUDE.md`](CLAUDE.md) | Persistent memory: orchestrator role, anti-fan-out discipline, mandatory verification. |
@@ -253,6 +285,25 @@ amiral-savings --tokens 5 --brain fable --hands sonnet --plan 20
 
 Full math and sources: [docs/quota-math.md](docs/quota-math.md). Reproducible measurements: [BENCHMARKS.md](BENCHMARKS.md).
 
+## 🧾 Prove it (the journal de bord)
+
+Ship AI-written code you can defend. `amiral-journal enable` adds
+provenance trailers to every commit of the repo (opt-in, per repo,
+removable anytime):
+
+```
+Amiral-Route: implementer=claude-sonnet-4-6 grunt=claude-haiku-4-5
+Amiral-Verified: green (verify.sh)
+Amiral-Attest: sha256:8dca5e258291f50c
+```
+
+The attest hash is sha256(verify.sh + staged diff) — anyone can
+recompute it; forging it means actually running the gate. Squash-merge
+teams: `amiral-journal note` attaches the same block as a git note
+(ref `amiral`), which survives history rewrites. Cost trailer is a
+separate opt-in (`enable --with-cost`) with a public-remote warning.
+No registry, no server: the audit trail lives in your git.
+
 ## 🌍 Beyond Claude Code
 
 The **implementation** here is Claude Code (native routing primitives). The **pattern and the discipline are portable** — and partly predate this repo (Aider's architect/editor mode proved the two-tier split years ago):
@@ -311,7 +362,7 @@ Full honest comparison (Ruflo, Code Kit, Octopus, Maestro, opusplan): [docs/land
 
 ## 🤝 Contributing
 
-The most valuable PR is a **benchmark row** — run [`amiral-report`](bin/amiral-report) after a benchmark, it formats your numbers and prefills the issue ([protocol](BENCHMARKS.md), collected in [#3](https://github.com/Rompomepome/amiral/issues/3)). Also welcome: worker agents, stack policies, fixes tracking Claude Code releases. See [CONTRIBUTING.md](CONTRIBUTING.md).
+The most valuable PR is a **benchmark row** — run [`amiral-report`](bin/amiral-report) after a benchmark, it formats your numbers and prefills the issue ([protocol](BENCHMARKS.md), collected in [#3](https://github.com/Rompomepome/amiral/issues/3)). Also welcome: worker agents, stack policies, fixes tracking Claude Code releases. See [CONTRIBUTING.md](CONTRIBUTING.md). Ideas and feedback from the community are logged in [IDEAS.md](IDEAS.md).
 
 ## 📄 License
 

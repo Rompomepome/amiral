@@ -75,6 +75,23 @@ if [ -f "$ADV" ] && [ -f "$PREFS" ]; then
   fi
 fi
 
+echo "-- Butin (savings ledger) --"
+BLOG="${AMIRAL_HOME:-$HOME/.amiral}/butin.jsonl"
+if [ -f "$BLOG" ]; then
+  BM=$(grep -c '"real_cost_usd"' "$BLOG" 2>/dev/null || echo 0)
+  BT=$(grep -c '"agent"' "$BLOG" 2>/dev/null || echo 0)
+  ok "butin log present ($BM/$BT tasks measured)"
+  LASTTS=$(tail -1 "$BLOG" | grep -oE '"ts":"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
+  [ -n "$LASTTS" ] && echo "       last event: $LASTTS"
+  grep -q "butin-collect" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" 2>/dev/null \
+    && ok "collector hook wired in settings.json" \
+    || warn "collector hook NOT wired — events only flow once you add it (docs/butin.md)"
+  BE="${AMIRAL_HOME:-$HOME/.amiral}/butin-errors.log"
+  [ -s "$BE" ] && warn "butin collector errors logged: $(wc -l < "$BE" | tr -d ' ') (see $BE)"
+else
+  warn "butin: no data yet — wire the collector once (docs/butin.md)"
+fi
+
 echo "-- Current project --"
 if [ -x ./verify.sh ]; then
   ok "verify.sh found here — the fleet has a machine-checkable done gate"

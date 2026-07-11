@@ -4,6 +4,7 @@
 # network. Prices are notional list rates ($/million tokens) and easy to
 # edit at the top. This is an ESTIMATE: your real ratio depends on your
 # task. Measure it for real with BENCHMARKS.md.
+export LC_ALL=C
 set -uo pipefail
 
 # --- editable price table ($ per million tokens, output rate) ---
@@ -69,4 +70,5 @@ awk -v tm="$TOKENS_M" -v pb="$PB" -v ph="$PH" -v plan="$PLAN_PCT" -v brain="$BRA
 echo ""
 echo "  Notional list rates; edit the table in this script for yours."
 echo "  This is an estimate — measure your real numbers with BENCHMARKS.md."
+echo "  Got real routed data already?  amiral-butin  proves it (net, local)."
 echo ""

@@ -54,3 +54,7 @@ Codex as a second opinion from another model. Same brief, different eyes.
   frontier model to *drive* cheaper workers, do that inside the tool that
   owns the loop (Claude Code for amiral). Cross-tool orchestration is a
   runtime to host and maintain — deliberately out of scope.
+
+## GPT-5.6 mapping (Sol/Terra/Luna, GA 2026-07-09)
+
+The family IS the amiral pattern, tiered by OpenAI themselves: **brain = sol** (plans, reviews, corsaire), **hands = terra** (implementer/reviewer volume), **grunt = luna** (mechanical bulk). Same discipline, provider-native tiers. Price rows ship in the butin table; `amiral-butin add-model` covers any variant we missed.

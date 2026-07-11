@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+# amiral butin — counterfactual savings, proven from your own routed tasks.
+# 100% local. The displayed number is NET (escalations deducted), never gross.
+# "L'amiral ne rame pas — et il te le prouve." ⚓
+export LC_ALL=C
+set -uo pipefail
+
+AMIRAL_HOME="${AMIRAL_HOME:-$HOME/.amiral}"
+LOG="$AMIRAL_HOME/butin.jsonl"
+CONFIG="$AMIRAL_HOME/butin-config.json"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CORE="$HERE/lib/butin/core.awk"
+# locate core when installed (copied next to the script)
+[ -f "$CORE" ] || CORE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk"
+
+# colors (respect NO_COLOR + --no-color)
+if [ -n "${NO_COLOR:-}" ] || [ "${1:-}" = "--no-color" ]; then
+  BLUE="";GREEN="";COPPER="";DIM="";BOLD="";RST=""
+else
+  BLUE=$'\033[34m';GREEN=$'\033[32m';COPPER=$'\033[33m';DIM=$'\033[2m';BOLD=$'\033[1m';RST=$'\033[0m'
+fi
+
+mkdir -p "$AMIRAL_HOME"
+
+# --- init / rebaseline: baseline detection with the Fable trap guarded ---
+if [ "${1:-}" = "init" ] || [ "${1:-}" = "rebaseline" ]; then
+  ADP="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/adapter.sh"
+  [ -f "$ADP" ] || ADP="$HERE/adapters/claude-code/adapter.sh"
+  DET=""; MODE_D="api"
+  if [ -f "$ADP" ]; then . "$ADP"; DET=$(adapter_detect_baseline); MODE_D=$(adapter_detect_mode); fi
+  BM=$(echo "$DET" | cut -f1); NSESS=$(echo "$DET" | cut -f2)
+  SRC="auto (${NSESS:-0} sessions)"
+  if [ -z "$BM" ]; then BM="claude-sonnet-4-6"; SRC="default (conservative)"; fi
+  case "$BM" in
+    *fable*|*opus*)
+      echo "Detected baseline: $BM ($SRC) — a FRONTIER model."
+      echo "Confirm this really was your pre-amiral usage, or pick conservative:"
+      echo "  1) confirm $BM    2) use claude-sonnet-4-6 (conservative)"
+      printf "choice [2]: "
+      read -r ch </dev/tty 2>/dev/null || read -r ch || ch=2
+      [ "$ch" = "1" ] || { BM="claude-sonnet-4-6"; SRC="chosen (conservative)"; } ;;
+  esac
+  printf '{ "baseline_model": "%s", "baseline_source": "%s", "mode": "%s" }\n' "$BM" "$SRC" "$MODE_D" > "$CONFIG"
+  echo "⚓ baseline set: $BM ($SRC), mode: $MODE_D"
+  [ "${1:-}" = "rebaseline" ] && echo "  (applies to FUTURE events only; history keeps the baseline it was priced with)"
+  exit 0
+fi
+
+# --- add-model: price a new model yourself, day one, no repo update needed
+if [ "${1:-}" = "add-model" ]; then
+  ID="${2:-}"; INM="${3:-}"; OUTM="${4:-}"
+  [ -z "$ID" ] || [ -z "$INM" ] || [ -z "$OUTM" ] && { echo "usage: amiral-butin add-model <pricing_id> <in_\$/Mtok> <out_\$/Mtok> [cache_write_\$/Mtok] [cache_read_\$/Mtok]"; echo "  defaults if omitted: cache_write = 1.25x in, cache_read = 0.10x in"; exit 1; }
+  P="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/pricing.tsv"; [ -f "$P" ] || P="$HERE/lib/butin/pricing.tsv"
+  grep -q "^$ID	" "$P" && { echo "$ID already priced in $P"; exit 1; }
+  ROW=$(awk -v i="$INM" -v o="$OUTM" -v cw="${5:-}" -v cr="${6:-}" 'BEGIN{
+    if (cw=="") cw=i*1.25; if (cr=="") cr=i*0.10
+    printf "%.10g\t%.10g\t%.10g\t%.10g", i/1e6, o/1e6, cw/1e6, cr/1e6 }')
+  printf '# added %s via add-model (rates \$/Mtok: in=%s out=%s)\n%s\t%s\n' "$(date -u +%F)" "$INM" "$OUTM" "$ID" "$ROW" >> "$P"
+  echo "⚓ $ID priced in $P — future tasks on it are now measured."
+  exit 0
+fi
+
+# --- refresh-pricing: explicit-only, never automatic ---
+if [ "${1:-}" = "refresh-pricing" ]; then
+  echo "Pricing refresh is EXPLICIT-ONLY (nothing here ever touches the network on its own)."
+  echo "Edit the table: ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/pricing.tsv"
+  echo "Reference rates: https://docs.claude.com (and your other providers' pricing pages)."
+  exit 0
+fi
+
+# ---- init / rebaseline: create butin-config.json (first-run) ----
+
+if [ ! -f "$LOG" ]; then
+  echo ""
+  echo "${BLUE}⚓ Butin${RST} — no routed tasks logged yet."
+  echo "${DIM}  What will be measured: every routed task (agent, model, real${RST}"
+  echo "${DIM}  tokens) vs the same tokens at your baseline model. Net only.${RST}"
+  echo "${DIM}  Generate your first data point: run amiral, delegate one task.${RST}"
+  echo "${DIM}  Wire the collector once: see docs/butin.md${RST}"
+  echo ""
+  exit 0
+fi
+
+# read config (baseline + source + mode)
+BASELINE="?"; BSOURCE="?"; MODE="api"
+[ -f "$CONFIG" ] || echo "  (no config yet — run: amiral-butin init)" >&2
+if [ -f "$CONFIG" ]; then
+  BASELINE=$(grep -oE '"baseline_model"[ ]*:[ ]*"[^"]*"' "$CONFIG" | sed 's/.*"\([^"]*\)"$/\1/' 2>/dev/null || echo "?")
+  BSOURCE=$(grep -oE '"baseline_source"[ ]*:[ ]*"[^"]*"' "$CONFIG" | sed 's/.*"\([^"]*\)"$/\1/' 2>/dev/null || echo "?")
+  MODE=$(grep -oE '"mode"[ ]*:[ ]*"[^"]*"' "$CONFIG" | sed 's/.*"\([^"]*\)"$/\1/' 2>/dev/null || echo "api")
+fi
+
+# run the universal core
+HAIRCUT=0
+for a in "$@"; do case "$a" in --haircut=*) HAIRCUT="${a#--haircut=}";; esac; done
+REPORT=$(awk -v MODE="$MODE" -v HAIRCUT="$HAIRCUT" -f "$CORE" < "$LOG" 2>/dev/null)
+
+NET=$(echo "$REPORT" | awk -F'\t' '/^NET/{print $2}')
+GROSS=$(echo "$REPORT" | awk -F'\t' '/^GROSS/{print $2}')
+TASKS=$(echo "$REPORT" | awk -F'\t' '/^TASKS/{print $2}')
+PREM=$(echo "$REPORT" | awk -F'\t' '/^PREM_AVOIDED/{print $2}')
+ESC=$(echo "$REPORT" | awk -F'\t' '/^ESC/{print $2"\t"$3}')
+ESC_N=$(echo "$ESC" | cut -f1); ESC_C=$(echo "$ESC" | cut -f2)
+CHEAP=$(echo "$REPORT" | awk -F'\t' '/^CHEAP_RATE/{print $2"/"$3}')
+BAD=$(echo "$REPORT" | awk -F'\t' '/^BAD_LINES/{print $2}')
+
+PV=$(grep -oE 'pricing_version: [0-9-]+' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/pricing.tsv" "$HERE/lib/butin/pricing.tsv" 2>/dev/null | head -1 | awk '{print $2}')
+if [ -n "$PV" ]; then
+  AGE_D=$(( ( $(date +%s) - $(date -d "$PV" +%s 2>/dev/null || date -j -f %Y-%m-%d "$PV" +%s 2>/dev/null || date +%s) ) / 86400 ))
+  [ "$AGE_D" -gt 90 ] && STALE="  ${COPPER}pricing table from $PV — rates may drift; refresh explicitly (amiral-butin refresh-pricing)${RST}"
+fi
+echo ""
+echo "${BLUE}⚓ BUTIN${RST} — $(date +'%d %b %Y') ${DIM}(baseline: $BASELINE, $BSOURCE)${RST}"
+echo ""
+printf "  %-13s %7s  %9s  %13s  %9s\n" "" "Tasks" "Real" "Counterfact." "Net"
+echo "$REPORT" | awk -v G="$GREEN" -v D="$DIM" -v R="$RST" '
+  /^AGENTS_START/{p=1;next} /^AGENTS_END/{p=0;next}
+  p{ net=$5+0; col=(net>0)?G:D;
+     printf "  %-13s %7d  %9.4f  %13.4f  %s%+9.4f%s\n",$1,$2,$3,$4,col,net,R }'
+BRAIN=$(echo "$REPORT" | awk -F'\t' '/^BRAIN/{print $2"\t"$3}')
+BRAIN_N=$(echo "$BRAIN" | cut -f1); BRAIN_C=$(echo "$BRAIN" | cut -f2)
+if [ "${BRAIN_N:-0}" != "0" ] && [ -n "$BRAIN_N" ]; then
+  printf "  %-13s %7s  %9s  %13s  %s%+9.4f%s\n" "brain premium" "$BRAIN_N" "—" "—" "$COPPER" "-$BRAIN_C" "$RST"
+fi
+if [ "${ESC_N:-0}" != "0" ] && [ -n "$ESC_N" ]; then
+  printf "  %-13s %7s  %s%+9.4f%s  %13s  %s%+9.4f%s\n" "escalations" "$ESC_N" "$COPPER" "$ESC_C" "$RST" "—" "$COPPER" "-$ESC_C" "$RST"
+fi
+echo "  ────────────────────────────────────────────────────────────"
+
+# hero line: NET, the only bold element
+if [ "$MODE" = "plan" ]; then
+  # subscription: premium tokens avoided is the hero (SPEC §5bis)
+  printf "  %-20s ${BOLD}${GREEN}%s premium tokens avoided${RST}\n" "This period" "$(printf "%'d" "${PREM:-0}" 2>/dev/null || echo "${PREM:-0}")"
+  printf "  %-20s ${DIM}API-equivalent value: \$%s${RST}\n" "" "${NET:-0}"
+else
+  netcol="$GREEN"; case "$NET" in -*) netcol="$COPPER";; esac
+  printf "  %-20s ${BOLD}${netcol}%+.2f \$${RST}\n" "Net saved" "${NET:-0}"
+fi
+
+# cheap-route success + honesty caveats
+MEAS=$(echo "$REPORT" | awk -F'\t' '/^MEASURED/{print $2}')
+UNMEAS=$(echo "$REPORT" | awk -F'\t' '/^UNMEASURED/{print $2}')
+DUP=$(echo "$REPORT" | awk -F'\t' '/^DUP/{print $2}')
+VER=$(echo "$REPORT" | awk -F'\t' '/^VERIFIED/{print $2"/"($2+$3)}')
+TOTAL=$((${MEAS:-0} + ${UNMEAS:-0}))
+echo ""
+echo "  ${DIM}Coverage: ${MEAS:-0}/$TOTAL tasks measured$( [ "${UNMEAS:-0}" != "0" ] && echo " (${UNMEAS} unmeasured — never invented)" )$( [ "${DUP:-0}" != "0" ] && echo " · ${DUP} duplicate(s) ignored" )${RST}"
+UML=$(echo "$REPORT" | awk -F'\t' '/^UMODEL/{printf "%s (%s) ",$2,$3}')
+[ -n "$UML" ] && echo "  ${COPPER}unmeasured models: ${UML}— price them: amiral-butin add-model <id> <in_\$/Mtok> <out_\$/Mtok>${RST}"
+[ -n "$VER" ] && [ "$VER" != "0/0" ] && echo "  ${DIM}Verified through the gate: $VER measured tasks${RST}"
+[ -n "$CHEAP" ] && echo "  ${DIM}Cheap-route success: $CHEAP${RST}"
+if [ -z "$CHEAP" ] && awk -v n="${NET:-0}" 'BEGIN{exit !(n<0.01 && n>-0.01)}'; then
+  echo "  ${DIM}Your brain and hands are on the same tier: the butin measures cost,${RST}"
+  echo "  ${DIM}not quality. Savings appear when routing crosses tiers (grunt→Haiku,${RST}"
+  echo "  ${DIM}or an Opus/Fable brain). amiral's value here is discipline + the gate.${RST}"
+fi
+DEGEN=$(echo "$REPORT" | awk -F'\t' '/^DEGENERATE/{print $2}')
+[ "$DEGEN" = "1" ] && echo "  ${DIM}All tiers identical (brain = hands = baseline): the butin measures cost, not quality. Savings appear when routing crosses tiers (grunt→haiku, or an opus/fable brain).${RST}"
+echo "  ${DIM}Share a row → amiral-report · estimate scenarios → amiral-savings${RST}"
+if [ "${1:-}" = "--detail" ]; then
+  echo ""
+  echo "  ${DIM}Honesty:${RST}"
+  echo "  ${DIM}• 'Same tokens': baseline rate applied to tokens actually used — an estimate, not a bill.${RST}"
+  [ "$MODE" = "plan" ] && echo "  ${DIM}• Subscription plan: shown as API-equivalent value + premium tokens avoided, not cash.${RST}"
+  echo "  ${DIM}• Baseline source: $BSOURCE.${RST}"
+  [ -n "$PVER" ] && echo "  ${DIM}• Pricing table version: $PVER (stamped on every event).${RST}"
+  echo "  ${DIM}• Counterfactual applies baseline rates to the DECOMPOSED token volume (each worker re-reads context) — a bias in amiral's favor; use --haircut=15 for a conservative view.${RST}"
+  echo "  ${DIM}• Escalations counted against amiral (a failed cheap route can make a task net-negative — by design).${RST}"
+fi
+[ -n "${STALE:-}" ] && echo "" && echo "$STALE"
+case "$BSOURCE" in default*|"?") echo "  ${DIM}baseline is a default — set yours once: amiral-butin init${RST}";; esac
+[ -n "$BAD" ] && echo "" && echo "  ${COPPER}note: $BAD corrupted log line(s) skipped; totals cover the rest.${RST}"
+echo ""

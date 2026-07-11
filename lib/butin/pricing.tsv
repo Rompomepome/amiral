@@ -1,0 +1,17 @@
+# amiral butin — embedded price table ($ per token, output-rate model)
+# pricing_version: 2026-07-10
+# format: pricing_id<TAB>in_usd_per_tok<TAB>out_usd_per_tok<TAB>cache_write<TAB>cache_read
+# multi-provider from day one; refreshable from LiteLLM but never required.
+claude-opus-4-8	0.000015	0.000075	0.00001875	0.0000015
+claude-fable-5	0.00001	0.00005	0.0000125	0.000001
+claude-sonnet-5	0.000003	0.000015	0.00000375	0.0000003
+claude-sonnet-4-6	0.000003	0.000015	0.00000375	0.0000003
+claude-haiku-4-5	0.0000008	0.000004	0.000001	0.00000008
+gpt-5	0.00001	0.00003	0	0.0000025
+gpt-5-mini	0.0000006	0.0000024	0	0.00000006
+gemini-2-5-pro	0.00000125	0.00001	0	0.0000003125
+mistral-large	0.000002	0.000006	0	0
+# GPT-5.6 family (source: openai.com/index/gpt-5-6, GA 2026-07-09; cache: write=1.25x in, read=0.10x in)
+gpt-5.6-sol	0.000005	0.00003	0.00000625	0.0000005
+gpt-5.6-terra	0.0000025	0.000015	0.000003125	0.00000025
+gpt-5.6-luna	0.000001	0.000006	0.00000125	0.0000001

@@ -79,9 +79,19 @@ amiral-savings() {
   bash "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/amiral-savings" "$@"
 }
 
+# Prove amiral's ROI from your own routed tasks (local, net, auditable).
+amiral-butin() {
+  bash "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/amiral-butin" "$@"
+}
+
 # Package YOUR benchmark numbers into a shareable issue (local, voluntary).
 amiral-report() {
   bash "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/amiral-report" "$@"
+}
+
+# Provenance for AI-assisted commits (opt-in, per repo).
+amiral-journal() {
+  bash "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/amiral-journal" "$@"
 }
 
 # Fleet health check.

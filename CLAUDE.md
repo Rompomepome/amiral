@@ -22,6 +22,9 @@ Triage every incoming task by complexity, then act:
   audit): after implementation, also send the `corsaire` agent
   (adversarial pre-mortem) and address its top findings before you
   report done.
+- If the project has a `./FLEET.md`, it is the fleet policy of THIS
+  repo: its routing tiers and required gates override personal defaults.
+  Read it at session start; follow it; changes to it go through PR.
 - After any real implementation: send the `reviewer` agent (fresh
   context, it did not write the code) before concluding.
 - **Hard judgment call above a cheap executor's pay grade** (reviewing a

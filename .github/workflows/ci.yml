@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Shell syntax
-        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh bin/amiral-doctor bin/amiral-trust bin/amiral-setup bin/amiral-savings bin/amiral-report hooks/subagent-verify.sh
+        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh bin/amiral-doctor bin/amiral-trust bin/amiral-setup bin/amiral-savings bin/amiral-report bin/amiral-butin bin/amiral-journal adapters/claude-code/butin-collect.sh hooks/subagent-verify.sh
 
       - name: Plugin manifests are valid JSON
         run: |
@@ -106,6 +106,9 @@ jobs:
         run: |
           out=$(printf 'test task\n2.1.x\n100k\n40k\n80k\nyes\nnote\n' | bash bin/amiral-report)
           echo "$out" | grep -q "Nothing has been sent" && echo "$out" | grep -q "issues/new" && echo "report wizard OK"
+
+      - name: Butin critical-path battery
+        run: bash tests/test-butin.sh
 
       - name: No dangerous flags shipped
         run: |

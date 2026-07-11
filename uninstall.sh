@@ -18,6 +18,8 @@ rm -f "$CLAUDE_DIR/amiral-policy.md" \
       "$CLAUDE_DIR/amiral-setup" \
       "$CLAUDE_DIR/amiral-savings" \
       "$CLAUDE_DIR/amiral-report" \
+      "$CLAUDE_DIR/amiral-butin" \
+      "$CLAUDE_DIR/amiral-journal" \
       "$CLAUDE_DIR/amiral.env"
 rm -f "$CLAUDE_DIR/skills/plan-ship/SKILL.md"
 rmdir "$CLAUDE_DIR/skills/plan-ship" 2>/dev/null || true   # only if now empty

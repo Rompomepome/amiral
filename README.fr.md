@@ -14,6 +14,9 @@ Les modèles frontier dans Claude Code sont le moyen le plus rapide de cramer un
 
 Tu n'as pas besoin d'un modèle frontier pour renommer 40 imports. Tu en as besoin pour *planifier* le renommage et *vérifier* qu'il a eu lieu.
 
+
+> Nouveau : le **butin** (`amiral-butin`) prouve le ROI depuis TES taches routees — economie contrefactuelle nette (escalades et surcout cerveau deduits), couverture affichee, 100% local (`amiral-butin init` pour demarrer). Le **journal de bord** (`amiral-journal`) signe tes commits d'une provenance verifiable (Route, Verified, Attest recalculable), et la politique de flotte se versionne dans le repo (FLEET.md).
+
 ## La flotte
 
 | Commande | Cerveau | Workers | Quand |
