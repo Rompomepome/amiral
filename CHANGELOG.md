@@ -1,5 +1,45 @@
 # Changelog
 
+## v0.11.0 - 2026-07-11
+**Correctness release. The butin in v0.9-v0.10.1 measured nothing real —
+this fixes that.** An adversarial audit (dogfooded: amiral auditing
+amiral) proved on a live machine that the collector read hook fields
+SubagentStop never delivers, so every event was misattributed. If you
+ran the collector before now, your butin.jsonl is fabricated — archive
+it and start fresh after installing this.
+
+Blockers fixed (each now covered by a test on REAL transcript fixtures,
+so a regression fails CI):
+- **C1 — the collector never measured a worker.** It read `subagent_type`
+  and `transcript_path`; SubagentStop delivers `agent_type` and
+  `agent_transcript_path` (the latter is the subagent's own transcript;
+  `transcript_path` is the *main session's*). Every event was logged as
+  agent `"worker"`, priced from the brain's tokens at the brain's model.
+  Now reads the correct fields; real agent names and models appear.
+- **C2 — model decoupled from tokens.** The model was grepped globally
+  with `tail -1`, independent of the usage line. Now taken from the same
+  assistant message that carries the tokens.
+- **H10 — only the last turn was billed.** A multi-turn subagent was
+  undercounted 40-60%. Now sums every usage block in the transcript.
+- **H8 — a failed cheap route booked a profit.** The wasted attempt kept
+  its counterfactual credit while only its cost was charged, flipping a
+  loss into a fabricated gain for every model pair. Now the failed
+  attempt is superseded (excluded from both sides); only its wasted real
+  cost is charged. A failed route is a measured loss.
+- **C3 — scientific notation parsed as its mantissa** (1.5e-2 → 1.5, a
+  100x error waiting for any Python/JS adapter). Parser now handles eE.
+- **C4 — a corrupt state file silently deleted the event.** Now the epoch
+  field is validated; a bad state file never loses data.
+- **C7 — a missing newline merged two events, and coverage still said
+  "complete."** The merged record is now counted as corrupted, so lost
+  data surfaces instead of being certified absent.
+Also: per-session state uses a PID-unique temp name (H7), double
+`pricing_version` removed (M9). Fixtures rewritten to the real Claude
+Code transcript schema. The journal/attestation hardening (H2/H3/H4/H9,
+forgeable Verified, cross-repo leak) lands next in v0.11.1 — until then,
+do not use `amiral-journal flag` or `--with-cost` to publish numbers.
+
+
 ## v0.10.1 - 2026-07-09
 Completion pass — everything decided in the three review passes is now
 either shipped or explicitly on the recorded roadmap (docs/butin-spec-v2.md):
