@@ -22,6 +22,14 @@ fi
 
 mkdir -p "$AMIRAL_HOME"
 
+# v0.12: measure pending receipts from now-stable transcripts (cold pass).
+MEASURE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/measure.py"
+[ -f "$MEASURE" ] || MEASURE="$HERE/lib/butin/measure.py"
+if [ -s "$AMIRAL_HOME/receipts.jsonl" ] && [ -f "$MEASURE" ] && command -v python3 >/dev/null 2>&1; then
+  BUTIN_PRICES="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/pricing.tsv" \
+    python3 "$MEASURE" 2>/dev/null | grep -qE '^measured' && COLD=1
+fi
+
 # --- init / rebaseline: baseline detection with the Fable trap guarded ---
 if [ "${1:-}" = "init" ] || [ "${1:-}" = "rebaseline" ]; then
   ADP="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/adapter.sh"
@@ -144,6 +152,8 @@ DUP=$(echo "$REPORT" | awk -F'\t' '/^DUP/{print $2}')
 VER=$(echo "$REPORT" | awk -F'\t' '/^VERIFIED/{print $2"/"($2+$3)}')
 TOTAL=$((${MEAS:-0} + ${UNMEAS:-0}))
 echo ""
+PEND=$(grep -c '"measured":false' "$AMIRAL_HOME/receipts.jsonl" 2>/dev/null || echo 0)
+[ "${PEND:-0}" != "0" ] && echo "  ${COPPER}${PEND} task(s) awaiting measurement (transcript not flushed yet — run again later)${RST}"
 echo "  ${DIM}Coverage: ${MEAS:-0}/$TOTAL tasks measured$( [ "${UNMEAS:-0}" != "0" ] && echo " (${UNMEAS} unmeasured — never invented)" )$( [ "${DUP:-0}" != "0" ] && echo " · ${DUP} duplicate(s) ignored" )${RST}"
 UML=$(echo "$REPORT" | awk -F'\t' '/^UMODEL/{printf "%s (%s) ",$2,$3}')
 [ -n "$UML" ] && echo "  ${COPPER}unmeasured models: ${UML}— price them: amiral-butin add-model <id> <in_\$/Mtok> <out_\$/Mtok>${RST}"

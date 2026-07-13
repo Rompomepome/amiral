@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.12.0 - 2026-07-13
+**The butin is rebuilt on a correct foundation.** v0.11 measured inside
+the hook, while the transcript was still streaming. Two adversarial
+audits and a real session proved what that produced: the same
+`message.id` is written up to 6x, so summing every usage line
+over-counted by **6.7x** on a live transcript (739,146 vs 110,424 real
+output tokens). No amount of patching fixes measuring a file that is
+still being written.
+
+**New architecture — capture and measurement are separated:**
+- **The hook writes a receipt** (`butin-receipt.sh`): which agent, which
+  session, where its transcript will be. No parsing, no arithmetic,
+  nothing that can race.
+- **`amiral-butin` measures cold** (`lib/butin/measure.py`), on stable,
+  finished files:
+  - **Dedup by `message.id`** — a streaming turn appears many times; only
+    its last record holds the final totals. This kills the 6.7x.
+  - **Identity from the platform's own sidecar** (`.meta.json` →
+    `agentType`), so a worker is never a nameless "worker" fallback.
+    (Observed: the sidecar correctly said `corsaire` where the hook hint
+    said `grunt` — the sidecar wins.)
+  - **Pending, never invented** — a transcript not yet flushed keeps its
+    receipt pending and is measured on the next run. Coverage reports
+    measured / pending / unmeasurable, honestly.
+  - **Reproducible** — the same receipts and transcripts always yield the
+    same number; re-running is idempotent. Anyone can re-run the
+    measurement and check it. No hosted service can offer that.
+Six classes of bug (async race, streaming double-count, partial-file
+reads, phantom escalations, retroactive markers, false coverage) become
+structurally impossible rather than individually patched.
+
+**Wiring changed** — see docs/butin.md; the old collector hook is
+superseded. If you ran any earlier butin, archive `butin.jsonl`: its
+numbers are fabricated. The journal/attestation hardening (forgeable
+Verified, empty attest on --amend, cross-repo route leak) is still open —
+do not publish numbers or badges from it yet.
+
+
 ## v0.11.0 - 2026-07-11
 **Correctness release. The butin in v0.9-v0.10.1 measured nothing real —
 this fixes that.** An adversarial audit (dogfooded: amiral auditing

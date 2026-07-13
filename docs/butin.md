@@ -1,28 +1,30 @@
-# Wiring the butin collector (one-time, opt-in)
+# Wiring the butin (one-time, opt-in)
 
-The butin only measures what YOU wire. Add to `~/.claude/settings.json`:
+The butin measures in two steps, on purpose:
+
+1. **The hook writes a receipt.** When an agent finishes, we record only
+   what the payload already knows (which agent, which session, where its
+   transcript will be). No parsing, no arithmetic — the transcript is
+   still being written at that moment, and measuring it there is how
+   v0.11 over-counted by 6.7x.
+2. **`amiral-butin` measures cold.** It reads the now-complete transcripts,
+   **deduplicates by `message.id`** (a streaming turn is written many
+   times; only the last record holds the final totals), takes the agent's
+   real identity from the platform's own `.meta.json` sidecar, and prices
+   it. A transcript that isn't flushed yet stays **pending** — never
+   invented, measured on the next run.
+
+Add to `~/.claude/settings.json`:
 
 ```json
 { "hooks": {
     "SubagentStop": [{ "hooks": [{ "type": "command",
-      "command": "bash ~/.claude/butin/butin-collect.sh" }] }],
+      "command": "bash ~/.claude/butin/butin-receipt.sh" }] }],
     "Stop": [{ "hooks": [{ "type": "command",
-      "command": "bash ~/.claude/butin/butin-collect.sh --brain" }] }]
+      "command": "bash ~/.claude/butin/butin-receipt.sh --brain" }] }]
 } }
 ```
 
-Then work normally; `amiral-butin` shows the report. Nothing is sent
-anywhere; errors land in `~/.amiral/butin-errors.log`. Check health:
-`amiral-doctor` (butin section). Provenance in commits: `amiral-journal`.
-
-## Notes
-- **POSIX-only for now** (bash + awk). PowerShell parity is a tracked
-  backlog item, not an implied promise.
-- **Squash-merge teams**: trailers live on the squashed commit, or use
-  `amiral-journal note` (git notes, ref `amiral`) which survives
-  rewrites. Notes need one push config: `git push origin refs/notes/amiral`.
-- **Multi-machine**: butin logs are append-only JSONL with unique event
-  ids — merge machines with `cat`, the core dedups on read.
-- **Pricing**: the table is embedded and versioned; it is NEVER fetched
-  automatically (nothing phones home). Edit `pricing.tsv` to refresh;
-  the report warns when the table is >3 months old.
+Then work normally and run `amiral-butin`. Nothing is sent anywhere. The
+same receipts + transcripts always produce the same number — anyone can
+re-run the measurement and check it.

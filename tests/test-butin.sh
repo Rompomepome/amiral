@@ -54,5 +54,29 @@ printf '{"v":1,"id":"b","agent":"brain","chosen_model":"claude-haiku-4-5","real_
 N=$(awk -f "$HERE/lib/butin/core.awk" "$AMIRAL_HOME/bp.jsonl" | awk -F'\t' '/^NET/{print $2}')
 awk "BEGIN{exit !($N==0 || $N==0.0)}" && ok "N3 cheap brain earns no credit (net=$N)" || ko "N3 net=$N"
 
+
+# ─── v0.12 cold-measurement battery ───
+T=$(mktemp -d); mkdir -p "$T/s/subagents"
+export BUTIN_PRICES="$HERE/lib/butin/pricing.tsv"
+echo '{"agentType":"corsaire","spawnDepth":1}' > "$T/s/subagents/agent-x.meta.json"
+cat > "$T/s/subagents/agent-x.jsonl" << 'TX'
+{"message":{"id":"m1","model":"claude-sonnet-5","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+{"message":{"id":"m1","model":"claude-sonnet-5","usage":{"input_tokens":100,"output_tokens":500,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}
+{"message":{"id":"m2","model":"claude-sonnet-5","usage":{"input_tokens":50,"output_tokens":250,"cache_read_input_tokens":2000,"cache_creation_input_tokens":0}}}
+TX
+A2="$(mktemp -d)"; printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$A2/butin-config.json"
+echo "{\"session_id\":\"S\",\"agent_type\":\"grunt\",\"agent_transcript_path\":\"$T/s/subagents/agent-x.jsonl\"}" \
+  | AMIRAL_HOME="$A2" bash "$HERE/adapters/claude-code/butin-receipt.sh"
+AMIRAL_HOME="$A2" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
+E=$(cat "$A2/butin.jsonl" 2>/dev/null)
+echo "$E" | grep -q '"out": 750' && ok "V12 dedup by message.id (out=750, not 800 naive)" || ko "V12 dedup: $(echo "$E"|grep -o '\"out\": [0-9]*')"
+echo "$E" | grep -q '"agent": "corsaire"' && ok "V12 identity from .meta.json sidecar (not the hint)" || ko "V12 identity"
+echo "{\"session_id\":\"S\",\"agent_type\":\"reviewer\",\"agent_transcript_path\":\"$T/s/subagents/agent-NOTYET.jsonl\"}" \
+  | AMIRAL_HOME="$A2" bash "$HERE/adapters/claude-code/butin-receipt.sh"
+AMIRAL_HOME="$A2" python3 "$HERE/lib/butin/measure.py" 2>/dev/null | grep -q "pending 1" && ok "V12 missing transcript stays PENDING (never invented)" || ko "V12 pending"
+AMIRAL_HOME="$A2" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
+N=$(grep -c '"real_cost_usd"' "$A2/butin.jsonl")
+[ "$N" = "1" ] && ok "V12 idempotent (re-run doesn't double-count)" || ko "V12 idempotent: $N events"
+
 echo ""; echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

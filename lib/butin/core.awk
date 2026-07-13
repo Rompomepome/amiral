@@ -24,10 +24,10 @@ function j(field,   v) {
     next
   }
   { d=0; mg=0; so=0; for(_k=1;_k<=length($0);_k++){_c=substr($0,_k,1); if(_c=="{"){d++; if(d==1&&so)mg=1; so=1} else if(_c=="}")d--}; if(mg){bad++; next} }
-  sv = j("v"); if (sv != "" && sv+0 > 1) { skipped_v++; next }
-  ver = j("v"); if (ver != "" && ver != "1") { skipv++; next }
+  sv = j("v"); if (sv != "" && sv+0 > 2) { skipped_v++; next }
+  ver = j("v"); if (ver != "" && ver != "1" && ver != "2") { skipv++; next }
   id = j("id"); if (id != "" && (id in seen)) { dup++; next } ; if (id != "") seen[id]=1
-  if (j("unmeasured") == "true") { unmeasured++
+  if (j("unmeasured") == "true" || j("unmeasurable") == "true") { unmeasured++
     um = j("model"); if (um != "" && um != "unknown") umm[um]++
     next }
   agent = j("agent"); real = j("real_cost_usd"); cf = j("counterfactual_cost_usd")
