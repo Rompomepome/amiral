@@ -150,11 +150,16 @@ MEAS=$(echo "$REPORT" | awk -F'\t' '/^MEASURED/{print $2}')
 UNMEAS=$(echo "$REPORT" | awk -F'\t' '/^UNMEASURED/{print $2}')
 DUP=$(echo "$REPORT" | awk -F'\t' '/^DUP/{print $2}')
 VER=$(echo "$REPORT" | awk -F'\t' '/^VERIFIED/{print $2"/"($2+$3)}')
-TOTAL=$((${MEAS:-0} + ${UNMEAS:-0}))
+PEND=$(grep -c '"measured":false' "$AMIRAL_HOME/receipts.jsonl" 2>/dev/null | tr -d " " || echo 0)
+PEND=${PEND:-0}
+TOTAL=$((${MEAS:-0} + ${UNMEAS:-0} + PEND))
 echo ""
-PEND=$(grep -c '"measured":false' "$AMIRAL_HOME/receipts.jsonl" 2>/dev/null || echo 0)
 [ "${PEND:-0}" != "0" ] && echo "  ${COPPER}${PEND} task(s) awaiting measurement (transcript not flushed yet — run again later)${RST}"
-echo "  ${DIM}Coverage: ${MEAS:-0}/$TOTAL tasks measured$( [ "${UNMEAS:-0}" != "0" ] && echo " (${UNMEAS} unmeasured — never invented)" )$( [ "${DUP:-0}" != "0" ] && echo " · ${DUP} duplicate(s) ignored" )${RST}"
+COVNOTE=""
+[ "${PEND:-0}" != "0" ] && COVNOTE=" · ${PEND} pending"
+[ "${UNMEAS:-0}" != "0" ] && COVNOTE="$COVNOTE · ${UNMEAS} unmeasurable (never invented)"
+[ "${DUP:-0}" != "0" ] && COVNOTE="$COVNOTE · ${DUP} duplicate(s) ignored"
+echo "  ${DIM}Coverage: ${MEAS:-0}/$TOTAL tasks measured${COVNOTE}${RST}"
 UML=$(echo "$REPORT" | awk -F'\t' '/^UMODEL/{printf "%s (%s) ",$2,$3}')
 [ -n "$UML" ] && echo "  ${COPPER}unmeasured models: ${UML}— price them: amiral-butin add-model <id> <in_\$/Mtok> <out_\$/Mtok>${RST}"
 [ -n "$VER" ] && [ "$VER" != "0/0" ] && echo "  ${DIM}Verified through the gate: $VER measured tasks${RST}"

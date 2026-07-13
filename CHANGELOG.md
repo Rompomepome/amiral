@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.12.2 - 2026-07-13
+- **The brain was triple-counted.** The Stop hook fires once per turn, and
+  every receipt points at the same growing main transcript — so a session
+  with N brain turns produced N near-identical brain events, inflating the
+  total. Cold measurement now keeps ONE brain event per session (a newer
+  measurement supersedes the older one); worker subagents, each with a
+  distinct transcript, are unaffected. Verified: 3 Stop receipts -> 1
+  brain event, idempotent on re-run.
+
+
+## v0.12.1 - 2026-07-13
+- **Coverage told a contradiction: "6/6 measured" while 2 tasks were
+  pending.** The total ignored pending receipts, so a full-coverage stamp
+  sat next to "2 awaiting measurement" — exactly the false-completeness
+  the design forbids. Coverage now counts pending in the denominator and
+  names them: "2/4 measured · 2 pending". Measured, pending, and
+  unmeasurable are all surfaced, honestly.
+
+
 ## v0.12.0 - 2026-07-13
 **The butin is rebuilt on a correct foundation.** v0.11 measured inside
 the hook, while the transcript was still streaming. Two adversarial

@@ -78,5 +78,18 @@ AMIRAL_HOME="$A2" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
 N=$(grep -c '"real_cost_usd"' "$A2/butin.jsonl")
 [ "$N" = "1" ] && ok "V12 idempotent (re-run doesn't double-count)" || ko "V12 idempotent: $N events"
 
+
+# ─── v0.12.2 brain dedup: Stop fires per turn, same session = one event ───
+Tb=$(mktemp -d); Ab=$(mktemp -d)
+export BUTIN_PRICES="$HERE/lib/butin/pricing.tsv"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$Ab/butin-config.json"
+printf '{"message":{"id":"bb","model":"claude-fable-5","usage":{"input_tokens":33,"output_tokens":1000,"cache_read_input_tokens":5000,"cache_creation_input_tokens":0}}}\n' > "$Tb/main.jsonl"
+for i in 1 2 3; do
+  echo "{\"session_id\":\"SS\",\"transcript_path\":\"$Tb/main.jsonl\"}" | AMIRAL_HOME="$Ab" bash "$HERE/adapters/claude-code/butin-receipt.sh" --brain
+done
+AMIRAL_HOME="$Ab" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
+BC=$(grep -c '"agent": "brain"' "$Ab/butin.jsonl" 2>/dev/null || echo 0)
+[ "$BC" = "1" ] && ok "V12.2 brain deduped per session (3 Stop receipts -> 1 event)" || ko "V12.2 brain: $BC events"
+
 echo ""; echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

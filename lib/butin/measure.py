@@ -87,31 +87,40 @@ def main():
     rates, pver = load_prices()
 
     done = set()
+    brain_sessions = {}   # session -> True if a brain event already exists
+    existing = []
     if os.path.isfile(EVENTS):
         for l in open(EVENTS, encoding="utf-8"):
-            try: done.add(json.loads(l).get("receipt"))
-            except Exception: pass
+            try: e = json.loads(l)
+            except Exception: continue
+            existing.append(e)
+            if e.get("receipt"): done.add(e["receipt"])
+            if e.get("agent") == "brain" and e.get("session"):
+                brain_sessions[e["session"]] = True
 
     kept, measured, pending, unmeasurable = [], 0, 0, 0
-    out = open(EVENTS, "a", encoding="utf-8")
+    new_events = []
+    brain_replace = {}   # session -> new brain event that supersedes the old one
     for line in open(RECEIPTS, encoding="utf-8"):
         try: r = json.loads(line)
         except Exception: continue
         if r.get("id") in done: continue
+        role = r.get("role")
+        # BRAIN dedup: the Stop hook fires once per turn, each receipt points at
+        # the SAME growing main transcript. Only ONE brain event per session is
+        # correct (the latest state). A new brain receipt for a session that
+        # already has a brain event REPLACES it instead of adding a duplicate.
         m = measure_transcript(r.get("transcript"))
         if m is None:
-            # not yet flushed (or gone) → keep it pending, never invent
-            age_ok = True
-            if age_ok: kept.append(line); pending += 1
-            continue
+            kept.append(line); pending += 1; continue
         model, i, o, cr, cw = m
         real = cost(rates, model, (i, o, cr, cw))
         cf = cost(rates, baseline, (i, o, cr, cw))
-        if real is None or cf is None:
-            ev = {"v": 2, "receipt": r["id"], "ts": r["ts"], "agent": agent_name(r.get("transcript"), r.get("agent_hint"), r.get("role")),
-                  "model": model, "unmeasurable": True, "reason": "unknown pricing_id"}
-            out.write(json.dumps(ev) + "\n"); unmeasurable += 1; continue
         ag = agent_name(r.get("transcript"), r.get("agent_hint"), r.get("role"))
+        if real is None or cf is None:
+            new_events.append({"v": 2, "receipt": r["id"], "ts": r["ts"], "agent": ag,
+                  "model": model, "unmeasurable": True, "reason": "unknown pricing_id"})
+            unmeasurable += 1; continue
         prem_i = i if (ag != "brain" and model != baseline and real < cf) else 0
         prem_o = o if (ag != "brain" and model != baseline and real < cf) else 0
         ev = {"v": 2, "receipt": r["id"], "ts": r["ts"], "session": r.get("session"),
@@ -120,8 +129,26 @@ def main():
               "real_cost_usd": round(real, 6), "baseline_model": baseline,
               "counterfactual_cost_usd": round(cf, 6), "pricing_version": pver,
               "outcome": "ok", "prem_in_avoided": prem_i, "prem_out_avoided": prem_o}
-        out.write(json.dumps(ev) + "\n"); measured += 1
-    out.close()
+        if ag == "brain" and r.get("session"):
+            sess = r["session"]
+            if sess in brain_sessions or sess in brain_replace:
+                brain_replace[sess] = ev      # supersede: don't double-count the brain
+                measured += 0                  # not a new measured task, a refresh
+            else:
+                brain_replace[sess] = ev; measured += 1
+        else:
+            new_events.append(ev); measured += 1
+
+    # rewrite EVENTS: keep existing (minus superseded brains), add new + replacements
+    final = []
+    for e in existing:
+        if e.get("agent") == "brain" and e.get("session") in brain_replace:
+            continue   # dropped: a fresher brain measurement for this session replaces it
+        final.append(e)
+    final.extend(new_events)
+    final.extend(brain_replace.values())
+    with open(EVENTS, "w", encoding="utf-8") as f:
+        for e in final: f.write(json.dumps(e) + "\n")
     with open(RECEIPTS, "w", encoding="utf-8") as f: f.writelines(kept)
     print(f"measured {measured} · pending {pending} · unmeasurable {unmeasurable}")
     return 0
