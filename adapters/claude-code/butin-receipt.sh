@@ -28,4 +28,13 @@ ID="$(printf '%s' "$SESSION-$AID-$TS-$$-${RANDOM:-0}" | shasum 2>/dev/null | awk
 # One atomic line. No file reads, no arithmetic — nothing that can race.
 printf '{"v":2,"id":"%s","ts":"%s","role":"%s","session":"%s","agent_hint":"%s","transcript":"%s","cwd":"%s","measured":false}\n' \
   "$ID" "$TS" "$ROLE" "$SESSION" "${AGENT:-}" "${TRANSCRIPT:-}" "${CWD:-}" >> "$RECEIPTS"
+
+# v0.13: refresh the statusline cache. Sibling in the installed layout
+# (~/.claude/butin/cache.sh), lib/butin/ from the repo root in a checkout.
+# cache.sh self-gates on the opt-in flag (no-op for non-statusline users)
+# and takes its own lock — the receipt append above is already done, so
+# this hook's "nothing that can race" property is untouched.
+CACHESH="$(dirname "${BASH_SOURCE[0]}")/cache.sh"
+[ -f "$CACHESH" ] || CACHESH="$(dirname "${BASH_SOURCE[0]}")/../../lib/butin/cache.sh"
+bash "$CACHESH" >/dev/null 2>&1 || true
 exit 0

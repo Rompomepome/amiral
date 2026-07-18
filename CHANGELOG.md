@@ -1,5 +1,121 @@
 # Changelog
 
+## v0.13.0 - 2026-07-15
+**Live config (part 1) + statusline (part 2) of the DESIGN-NOTES.md v0.13
+pass — the receipt (§3) is next.**
+- **New: `amiral-butin config`** — the direct escape hatch for when
+  `init`'s auto-detection is wrong or the situation changed mid-session
+  (new plan, new default model). `--baseline <pricing_id>` and `--mode
+  api|plan` set values directly, validated, no detection ceremony;
+  `--show` prints the current config, its resolved pricing row, and the
+  active pricing_version. Flags combine; no arguments behaves as
+  `--show`. Nothing is written on any validation failure — an unknown
+  pricing_id lists the known ones and points at `add-model`. The
+  collector re-reads `butin-config.json` per event, so a change is live
+  from the very next task — but it applies to FUTURE events only:
+  history keeps the baseline it was priced with, same rule as
+  `rebaseline`.
+- **Fix: `init`/`rebaseline` wrote the config with a bare `>` redirect**
+  (a reader mid-write could see a torn file). Now atomic: compose to
+  `butin-config.json.tmp.$$`, then `mv` onto the live file — same
+  pattern `config` uses. Both now also stamp `set_ts`.
+- **Fix: `amiral-butin --detail` crashed** — `line 181: PVER: unbound
+  variable` under `set -u` (the pricing version lives in `$PV`; `$PVER`
+  was never set). `--detail` is the designated honesty surface; it now
+  also states the future-only re-baseline rule explicitly.
+- **New: statusline** — an opt-in, ambient line in Claude Code's own
+  status bar, fed by a new O(1) cache (`~/.amiral/butin-cache.tsv`)
+  written atomically by a task-event producer (`lib/butin/cache.sh`)
+  that hangs off both adapters (the receipt hook and the legacy direct
+  collector) plus amiral-butin's own cold pass, so the cache stays in
+  sync no matter which path produced new data. The renderer
+  (`bin/amiral-statusline`, plus a `.ps1` shape shipped for Windows, not
+  auto-wired) never computes a number and never reads `butin.jsonl`'s
+  content: every figure comes from the same `core.awk` engine the report
+  uses, run twice (full log + a today-filtered slice) by the producer.
+  API mode: `⚓ +$0.43 today · +$12.35 net (57 meas · 3 unmeas)`. Plan
+  mode: `⚓ 2.3k prem tok avoided today · 123k total (57 meas)` — premium
+  tokens, never a dollar hero, on a subscription. A net-negative day is
+  amber and NEVER hidden; `amiral statusline mute` suppresses good news
+  only. `amiral statusline install` backs up `settings.json`, saves any
+  pre-existing statusLine verbatim, and chains it (same line when it
+  fits, the row above when it doesn't); `uninstall` restores exactly
+  what was displaced, or leaves a foreign statusLine untouched and says
+  so; `status`/`mute`/`unmute` round out the command.
+- **`measure.py` hardened for concurrent callers** — cold measurement can
+  now run from multiple hooks at once (receipt hook, collector,
+  amiral-butin's cold pass, the new statusline producer), so it takes
+  its own lock (a lock older than 600s is reclaimed once, never wedging
+  measurement forever) and rewrites `butin.jsonl`/`receipts.jsonl`
+  through a PID-unique temp file + `os.replace` instead of a bare
+  `open(path,"w")` — no more torn-read window for a concurrent core.awk
+  pass or report. New `BUTIN_STABLE_SECS` gate (0 by default — unchanged
+  behavior for existing callers): the statusline producer calls it with
+  60s, so a transcript still being flushed stays pending instead of
+  measuring low — the v0.11 lesson, applied to a new caller.
+- Doctor: the collector-wiring check now recognizes the receipt hook too
+  (`butin-collect` OR `butin-receipt`; receipt-only users previously got
+  a false "not wired" warning), and gains statusline checks (wired?,
+  project-scope shadow?, cache present/stale?).
+- CI: syntax-checks the new/changed scripts (`bin/amiral-statusline`,
+  `lib/butin/cache.sh`, `adapters/claude-code/butin-receipt.sh` — the
+  last was missing from the syntax check entirely), runs the new
+  `tests/test-statusline.sh` battery, and gains a **macOS job** running
+  both batteries — every `stat -c || stat -f` / `date -d || date -j`
+  chain previously exercised only its GNU branch in CI, while past
+  audits found real BSD breaks.
+- **Fresh-context review fixes (post-implementation):**
+  - The H8 supersede marker carried no `ts`, so the statusline's
+    today-slice kept the superseded attempt's phantom counterfactual
+    credit while dropping the marker that cancels it — an escalation day
+    rendered as a fabricated GREEN positive (`+$3.50 today` on a true
+    `-$1.50` day), and mute could then hide the negative day entirely.
+    Markers now carry `ts`; a marker whose target sits outside a slice
+    stays a no-op in `core.awk`.
+  - The report crashed (`syntax error` + `TOTAL: unbound variable`,
+    output truncated after the hero line) whenever `receipts.jsonl`
+    existed with zero pending entries — under `pipefail`, `grep -c`
+    prints `0` AND exits 1, so the `|| echo 0` fallback appended a
+    second `0` line. That state is routine now that the statusline
+    producer drains receipts continuously. Same latent bug fixed twice
+    in `amiral-doctor`.
+  - The report's own cold pass now uses the same 60s stable-gate as the
+    hook path — measured-once numbers are forever, so `amiral-butin`
+    must not race a still-flushing transcript either.
+  - Renderer parse is matched by KEY, never by position (an absent cache
+    key silently shifted every later field — wrong numbers on screen),
+    tolerates CRLF, normalizes IEEE negative zero (`+$-0.00`), clamps
+    sub-cent rounding noise so a `-$0.003` residual isn't shown as an
+    amber loss, and rejects `COLUMNS=0`.
+- **Adversarial pre-mortem fixes (corsaire):**
+  - **Integrity-pin the displaced statusline.** `statusline-prev.json` /
+    `statusline-prev-cmd` live in `~/.amiral` at the user's own perms,
+    outside the workspace-trust boundary Claude Code enforces on
+    `settings.json` — yet the renderer *executes* the saved command every
+    render and `uninstall` writes the saved object back into
+    `settings.json`. Anything running as the user (a prompt-injected
+    subagent with Bash, a poisoned dependency) could rewrite either and
+    turn "can write a file" into recurring native code execution that
+    outlives amiral. Both files are now written `0600`, hashed at install,
+    and re-verified before use: the renderer refuses to chain a
+    tampered/un-pinned/group-writable command, and `uninstall` refuses to
+    restore a poisoned object (removes the key and warns instead).
+    Tamper-*evident*, the same model `amiral-trust` uses for `verify.sh`.
+  - **Renderer caps a chained command at 2s in pure bash** — stock macOS
+    has no coreutils `timeout`, so a slow/hung previous statusline used to
+    block the render with no cap.
+  - `settings.json` symlink (dotfiles via stow/chezmoi) is written
+    *through* now, not silently replaced by a plain file; the backup is
+    taken only when an edit can actually happen (no false "nothing
+    changed"), `rm -f`'d before `cp` (no write-through a planted symlink),
+    and `chmod 600`.
+  - Producer no longer wedges forever on a non-directory at the lock path
+    (sync-tool artifact / planted symlink); `PENDING` excludes receipts
+    already measured in the log, so a crash between `measure.py`'s two
+    atomic renames can't display the same task as "1 meas · 1 pending".
+Battery: 21/21 butin + 38/38 statusline.
+
+
 ## v0.12.2 - 2026-07-13
 - **The brain was triple-counted.** The Stop hook fires once per turn, and
   every receipt points at the same growing main transcript — so a session

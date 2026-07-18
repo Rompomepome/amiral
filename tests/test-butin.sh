@@ -91,5 +91,109 @@ AMIRAL_HOME="$Ab" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
 BC=$(grep -c '"agent": "brain"' "$Ab/butin.jsonl" 2>/dev/null || echo 0)
 [ "$BC" = "1" ] && ok "V12.2 brain deduped per session (3 Stop receipts -> 1 event)" || ko "V12.2 brain: $BC events"
 
+
+# ─── v0.13.0 config subcommand: live re-baseline / re-mode, validated ───
+AC="$(mktemp -d)"; cp "$HERE/lib/butin/pricing.tsv" "$AC/"
+
+# T-C1 roundtrip: baseline+mode set together, --show reflects both, JSON parses
+AH1="$(mktemp -d)"
+AMIRAL_HOME="$AH1" CLAUDE_CONFIG_DIR="$AC" bash "$HERE/bin/amiral-butin" config --baseline claude-opus-4-8 --mode plan >/dev/null
+SHOW1=$(AMIRAL_HOME="$AH1" CLAUDE_CONFIG_DIR="$AC" NO_COLOR=1 bash "$HERE/bin/amiral-butin" config --show)
+if echo "$SHOW1" | grep -q "claude-opus-4-8" && echo "$SHOW1" | grep -q "plan" && echo "$SHOW1" | grep -q "manual (config)" \
+   && python3 -c "import json; json.load(open('$AH1/butin-config.json'))" 2>/dev/null; then
+  ok "T-C1 roundtrip: --show reflects baseline+mode+source, JSON parses"
+else
+  ko "T-C1 show=[$SHOW1]"
+fi
+
+# T-C2 rejection: unknown baseline writes nothing, no tmp residue
+AH2="$(mktemp -d)"
+printf '{ "baseline_model": "claude-sonnet-4-6", "baseline_source": "test", "mode": "api" }\n' > "$AH2/butin-config.json"
+cp "$AH2/butin-config.json" "$AH2/butin-config.json.snapshot"
+AMIRAL_HOME="$AH2" CLAUDE_CONFIG_DIR="$AC" bash "$HERE/bin/amiral-butin" config --baseline not-a-model >/dev/null 2>&1
+RC2=$?
+if [ "$RC2" != "0" ] && cmp -s "$AH2/butin-config.json" "$AH2/butin-config.json.snapshot" && [ -z "$(ls "$AH2"/butin-config.json.tmp.* 2>/dev/null)" ]; then
+  ok "T-C2 unknown baseline rejected: rc!=0, config byte-identical, no tmp residue"
+else
+  ko "T-C2 rc=$RC2"
+fi
+
+# T-C3 future-only: re-baseline mid-session never re-prices stored history
+AH3="$(mktemp -d)"
+printf '{ "baseline_model": "claude-sonnet-4-6", "baseline_source": "test", "mode": "api" }\n' > "$AH3/butin-config.json"
+PL3=$(sed "s|TRANSCRIPT_PATH|$HERE/tests/fixtures/subagent-transcript.jsonl|" "$HERE/tests/fixtures/subagent-payload.json")
+echo "$PL3" | AMIRAL_HOME="$AH3" CLAUDE_CONFIG_DIR="$AC" bash "$HERE/adapters/claude-code/butin-collect.sh"
+LA=$(grep -v superseded_marker "$AH3/butin.jsonl" | tail -1)
+IDA=$(echo "$LA" | grep -oE '"id"[ ]*:[ ]*"[^"]*"' | head -1)
+CFA=$(echo "$LA" | grep -oE '"counterfactual_cost_usd"[ ]*:[ ]*[0-9.eE+-]+' | sed 's/.*://')
+AMIRAL_HOME="$AH3" CLAUDE_CONFIG_DIR="$AC" bash "$HERE/bin/amiral-butin" config --baseline claude-opus-4-8 >/dev/null
+echo "$PL3" | AMIRAL_HOME="$AH3" CLAUDE_CONFIG_DIR="$AC" bash "$HERE/adapters/claude-code/butin-collect.sh"
+LA2=$(grep -v superseded_marker "$AH3/butin.jsonl" | grep -F "$IDA")
+LB=$(grep -v superseded_marker "$AH3/butin.jsonl" | tail -1)
+CFB=$(echo "$LB" | grep -oE '"counterfactual_cost_usd"[ ]*:[ ]*[0-9.eE+-]+' | sed 's/.*://')
+if [ "$LA2" = "$LA" ] && echo "$LA" | grep -q '"baseline_model":"claude-sonnet-4-6"' \
+   && echo "$LB" | grep -q '"baseline_model":"claude-opus-4-8"' \
+   && [ -n "$CFA" ] && [ -n "$CFB" ] && [ "$CFA" != "$CFB" ]; then
+  ok "T-C3 future-only: A's stored line unchanged (sonnet-4-6, cf=$CFA), B carries opus-4-8 (cf=$CFB)"
+else
+  ko "T-C3 A=[$LA] A_after=[$LA2] B=[$LB]"
+fi
+
+# T-C4 mode flip is live: next report call reflects it, no restart needed
+AH4="$(mktemp -d)"
+printf '{"v":1,"id":"c4","agent":"grunt","chosen_model":"claude-haiku-4-5","real_cost_usd":0.01,"baseline_model":"claude-sonnet-4-6","counterfactual_cost_usd":0.05,"outcome":"ok"}\n' > "$AH4/butin.jsonl"
+AMIRAL_HOME="$AH4" CLAUDE_CONFIG_DIR="$AC" bash "$HERE/bin/amiral-butin" config --mode plan >/dev/null
+OUT4=$(AMIRAL_HOME="$AH4" CLAUDE_CONFIG_DIR="$AC" NO_COLOR=1 bash "$HERE/bin/amiral-butin")
+echo "$OUT4" | grep -q "premium tokens avoided" && ok "T-C4 mode flip live: report hero shows premium tokens avoided" || ko "T-C4: $(echo "$OUT4" | grep -i "period\|premium\|net saved")"
+
+# T-C5 --detail regression: no unbound-variable crash, new honesty bullet present
+AH5="$(mktemp -d)"
+printf '{"v":1,"id":"c5","agent":"grunt","chosen_model":"claude-haiku-4-5","real_cost_usd":0.01,"baseline_model":"claude-sonnet-4-6","counterfactual_cost_usd":0.05,"outcome":"ok"}\n' > "$AH5/butin.jsonl"
+ERR5="$(mktemp)"
+OUT5=$(AMIRAL_HOME="$AH5" CLAUDE_CONFIG_DIR="$AC" NO_COLOR=1 bash "$HERE/bin/amiral-butin" --detail 2>"$ERR5")
+RC5=$?
+if [ "$RC5" = "0" ] && echo "$OUT5" | grep -q "Honesty:" && echo "$OUT5" | grep -q "FUTURE events only" && ! grep -qi "unbound variable" "$ERR5"; then
+  ok "T-C5 --detail: rc0, Honesty + FUTURE events only present, no unbound-variable crash"
+else
+  ko "T-C5 rc=$RC5 stderr=$(cat "$ERR5")"
+fi
+rm -f "$ERR5"
+
+# T-C6 escalation marker carries a ts (v0.13): a ts-less marker is invisible
+# to date-sliced passes (statusline today-cache) — an escalation day would
+# render as a fabricated positive. Drive the REAL collector escalation path:
+# fabricated session state = a cheap grunt attempt seconds ago, then the
+# pricier fixture (sonnet-5) in the same session -> escalated + marker.
+AH6="$(mktemp -d)"
+printf '{ "baseline_model": "claude-opus-4-8", "baseline_source": "test", "mode": "api" }\n' > "$AH6/butin-config.json"
+mkdir -p "$AH6/state"
+printf 'grunt\tclaude-haiku-4-5\t0.001\t%s\t0.000004\t0.005\te1id\n' "$(date +%s)" > "$AH6/state/last-S6"
+PL6=$(sed "s|TRANSCRIPT_PATH|$HERE/tests/fixtures/subagent-transcript.jsonl|;s|\"session_id\"[ ]*:[ ]*\"[^\"]*\"|\"session_id\":\"S6\"|" "$HERE/tests/fixtures/subagent-payload.json")
+echo "$PL6" | AMIRAL_HOME="$AH6" CLAUDE_CONFIG_DIR="$AC" bash "$HERE/adapters/claude-code/butin-collect.sh"
+MARK6=$(grep 'superseded_marker' "$AH6/butin.jsonl" | tail -1)
+if [ -n "$MARK6" ] && echo "$MARK6" | grep -qE '"ts"[ ]*:[ ]*"[0-9]{4}-' \
+   && grep -q '"outcome":"escalated"' "$AH6/butin.jsonl"; then
+  ok "T-C6 collector stamps ts on the supersede marker (date-sliced passes see it)"
+else
+  ko "T-C6 marker=[$MARK6]"
+fi
+
+# T-C7 report survives a present-but-drained receipts.jsonl (grep -c under
+# pipefail prints "0" AND exits 1 -> the old `|| echo 0` appended a second
+# "0" line and crashed the coverage arithmetic; routine state once cache.sh
+# measures receipts continuously).
+AH7="$(mktemp -d)"
+printf '{"v":1,"id":"c7r","agent":"grunt","chosen_model":"claude-haiku-4-5","real_cost_usd":0.01,"baseline_model":"claude-sonnet-4-6","counterfactual_cost_usd":0.05,"outcome":"ok"}\n' > "$AH7/butin.jsonl"
+: > "$AH7/receipts.jsonl"
+ERR7="$(mktemp)"
+OUT7=$(AMIRAL_HOME="$AH7" CLAUDE_CONFIG_DIR="$AC" NO_COLOR=1 bash "$HERE/bin/amiral-butin" 2>"$ERR7"); RC7=$?
+if [ "$RC7" = "0" ] && echo "$OUT7" | grep -q "Coverage: 1/1" && ! grep -q "syntax error\|unbound variable" "$ERR7"; then
+  ok "T-C7 empty receipts.jsonl: report rc0, coverage intact (no pipefail double-zero crash)"
+else
+  ko "T-C7 rc=$RC7 stderr=$(cat "$ERR7") cov=[$(echo "$OUT7" | grep Coverage)]"
+fi
+rm -f "$ERR7"
+
+
 echo ""; echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

@@ -91,6 +91,14 @@ cp "$REPO_DIR/bin/amiral-journal" "$CLAUDE_DIR/amiral-journal"
 chmod +x "$CLAUDE_DIR/amiral-journal"
 echo "  ok  amiral-butin (+ core, collector, journal)"
 
+# statusline (v0.13): opt-in, wired via `amiral statusline install`
+cp "$REPO_DIR/bin/amiral-statusline" "$CLAUDE_DIR/butin/amiral-statusline.sh"
+chmod +x "$CLAUDE_DIR/butin/amiral-statusline.sh"
+cp "$REPO_DIR/bin/amiral-statusline.ps1" "$CLAUDE_DIR/butin/amiral-statusline.ps1"
+cp "$REPO_DIR/lib/butin/cache.sh" "$CLAUDE_DIR/butin/cache.sh"
+chmod +x "$CLAUDE_DIR/butin/cache.sh"
+echo "  ok  butin statusline (renderer + cache producer — opt-in, not wired yet)"
+
 case "${SHELL:-}" in
   */zsh) RC_FILE="~/.zshrc" ;;
   */bash) RC_FILE="~/.bashrc" ;;
@@ -132,5 +140,7 @@ Fleet config (env): AMIRAL_BRAIN (default opus), AMIRAL_HANDS (default sonnet)
   Defaults: brain=opus (included on Max; Pro serves Sonnet in-plan),
   hands=sonnet. On Pro and want all-Sonnet? use  amiral-solo
   Want the premium planning brain?  AMIRAL_BRAIN=fable amiral
+
+Statusline is opt-in — amiral statusline install (backs up + restores any existing statusline)
 ============================================================
 EOF

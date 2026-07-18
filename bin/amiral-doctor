@@ -77,19 +77,57 @@ fi
 
 echo "-- Butin (savings ledger) --"
 BLOG="${AMIRAL_HOME:-$HOME/.amiral}/butin.jsonl"
+DSETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
 if [ -f "$BLOG" ]; then
-  BM=$(grep -c '"real_cost_usd"' "$BLOG" 2>/dev/null || echo 0)
-  BT=$(grep -c '"agent"' "$BLOG" 2>/dev/null || echo 0)
+  # no `|| echo 0` fallback: under pipefail grep -c prints "0" AND exits 1
+  # on zero matches, so the fallback would append a second "0" line.
+  BM=$(grep -c '"real_cost_usd"' "$BLOG" 2>/dev/null); BM=${BM:-0}
+  BT=$(grep -c '"agent"' "$BLOG" 2>/dev/null); BT=${BT:-0}
   ok "butin log present ($BM/$BT tasks measured)"
   LASTTS=$(tail -1 "$BLOG" | grep -oE '"ts":"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
   [ -n "$LASTTS" ] && echo "       last event: $LASTTS"
-  grep -q "butin-collect" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" 2>/dev/null \
+  # v0.12 wires either (or both) hooks: SubagentStop/Stop -> butin-receipt.sh
+  # (cold measurement) as well as the legacy direct butin-collect.sh path.
+  grep -qE "butin-(collect|receipt)" "$DSETTINGS" 2>/dev/null \
     && ok "collector hook wired in settings.json" \
     || warn "collector hook NOT wired — events only flow once you add it (docs/butin.md)"
   BE="${AMIRAL_HOME:-$HOME/.amiral}/butin-errors.log"
   [ -s "$BE" ] && warn "butin collector errors logged: $(wc -l < "$BE" | tr -d ' ') (see $BE)"
 else
   warn "butin: no data yet — wire the collector once (docs/butin.md)"
+fi
+
+# statusline (v0.13, opt-in)
+if grep -q "amiral-statusline" "$DSETTINGS" 2>/dev/null; then
+  ok "statusline wired (user scope)"
+  for f in ./.claude/settings.json ./.claude/settings.local.json; do
+    [ -f "$f" ] && grep -q "statusLine" "$f" 2>/dev/null \
+      && warn "project-scope statusLine shadows the amiral one here ($f)"
+  done
+  SCACHE="${AMIRAL_HOME:-$HOME/.amiral}/butin-cache.tsv"
+  if [ -f "$SCACHE" ]; then
+    GE=$(awk -F'\t' '$1=="generated_epoch"{print $2}' "$SCACHE" 2>/dev/null)
+    case "${GE:-}" in
+      ''|*[!0-9]*) : ;;   # can't read a clean epoch — skip the staleness check
+      *)
+        BJ="${AMIRAL_HOME:-$HOME/.amiral}/butin.jsonl"
+        RJ="${AMIRAL_HOME:-$HOME/.amiral}/receipts.jsonl"
+        M1=0; M2=0
+        [ -f "$BJ" ] && M1=$(stat -c %Y "$BJ" 2>/dev/null || stat -f %m "$BJ" 2>/dev/null || echo 0)
+        [ -f "$RJ" ] && M2=$(stat -c %Y "$RJ" 2>/dev/null || stat -f %m "$RJ" 2>/dev/null || echo 0)
+        case "$M1" in (*[!0-9]*|"") M1=0 ;; esac
+        case "$M2" in (*[!0-9]*|"") M2=0 ;; esac
+        NEWEST=$M1; [ "$M2" -gt "$NEWEST" ] && NEWEST=$M2
+        if [ "$NEWEST" -gt 0 ] && [ $(( NEWEST - GE )) -gt 600 ]; then
+          warn "statusline cache is stale (collector wired but failing? see butin-errors.log)"
+        fi
+        ;;
+    esac
+  else
+    warn "statusline: no cache yet (runs on next task event)"
+  fi
+else
+  echo "  [i]    statusline: opt-in via amiral statusline install"
 fi
 
 echo "-- Current project --"

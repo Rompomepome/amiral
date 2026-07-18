@@ -25,6 +25,10 @@ _amiral_first_run() {
 
 # THE command. Capable brain, workers forced cheap, admiral routes all.
 amiral() {
+  case "${1:-}" in statusline)
+    shift
+    bash "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/amiral-butin" statusline "$@"; return $? ;;
+  esac
   _amiral_first_run
   _amiral_load_prefs
   CLAUDE_CODE_SUBAGENT_MODEL="${AMIRAL_HANDS:-sonnet}" \

@@ -122,7 +122,10 @@ ships. Board only what you need; read any of them in five minutes.
   your own routed tasks. Coverage shown, escalations and brain premium
   deducted, cache priced as cache, 100% local. First run: `amiral-butin
   init` detects your baseline (and refuses to strawman a frontier one
-  without your confirmation). Wire the collector once: [docs/butin.md](docs/butin.md).
+  without your confirmation). Baseline or mode changed mid-session (new
+  plan, new default model)? `amiral-butin config` sets it directly, no
+  detection — changes apply to future events only, history keeps the
+  baseline it was priced with. Wire the collector once: [docs/butin.md](docs/butin.md).
 - **journal de bord** (prove) — `amiral-journal enable`: opt-in git
   trailers per repo — `Amiral-Route`, `Amiral-Verified`, and
   `Amiral-Attest` (a sha256 of verify.sh + the staged diff, recomputable

@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+# amiral butin — statusline renderer (v0.13), installed to
+# ~/.claude/butin/amiral-statusline.sh. Wired via settings.json:
+#   {"statusLine": {"type": "command", "command": "bash <path>", "padding": 0}}
+# (code.claude.com/docs/en/statusline.md, verified 2026-07-15).
+#
+# HONESTY INVARIANT (DESIGN-NOTES.md §1.2): this script NEVER computes a
+# savings figure and NEVER reads butin.jsonl's content (mtime stat only).
+# Every number printed here was already computed by core.awk and written to
+# the cache by lib/butin/cache.sh — no second accounting implementation.
+#
+# Deliberately NO `set -e` (and no `set -u`): a statusline script must NEVER
+# let an error become visible — Claude Code renders a blank line on non-zero
+# exit / empty stdout, and a script that dies mid-render would flicker the
+# UI every turn. Every code path below falls through to `exit 0`.
+export LC_ALL=C
+
+AMIRAL_HOME="${AMIRAL_HOME:-$HOME/.amiral}"
+CACHE="$AMIRAL_HOME/butin-cache.tsv"
+
+# The chained command lives in ~/.amiral (OUTSIDE Claude Code's workspace-trust
+# boundary) yet we execute it on every render. Run it ONLY if it still matches
+# the hash captured at install time (tamper-evident, like amiral-trust pins
+# verify.sh) and is not group/world-writable. A silently-changed or loosened
+# file is skipped, never executed. Not tamper-proof against an attacker who
+# rewrites both the file and its .sha — but that closes the accidental, the
+# shared-home, and the single-file-drop cases and never fails toward exec.
+_prevcmd_trusted() {
+  _f="$1"
+  _perm="$(stat -c '%A' "$_f" 2>/dev/null || stat -f '%Sp' "$_f" 2>/dev/null || echo '')"
+  case "$_perm" in ?????w*|????????w*) return 1 ;; esac   # group- or other-writable
+  _h="$(shasum "$_f" 2>/dev/null | awk '{print $1}')"
+  _p="$(cat "$_f.sha" 2>/dev/null)"
+  [ -n "$_h" ] && [ -n "$_p" ] && [ "$_h" = "$_p" ]
+}
+
+# Run a shell command with a hard 2s cap WITHOUT relying on coreutils
+# `timeout` (absent on stock macOS): background the command + a watchdog,
+# wait on the command, then kill the watchdog. The watchdog's stdout is sent
+# to /dev/null so it never pins this command-substitution's pipe open.
+_run_capped() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 2 sh -c "$1" 2>/dev/null; return
+  fi
+  # A backgrounded job's stdin is redirected to /dev/null in a non-interactive
+  # shell, so the chained command would see empty input — capture our stdin to
+  # a temp file and redirect it in explicitly. No mktemp -> run uncapped
+  # rather than lose the chained line.
+  _tf="$(mktemp 2>/dev/null)" || { sh -c "$1" 2>/dev/null; return; }
+  cat > "$_tf" 2>/dev/null
+  sh -c "$1" < "$_tf" 2>/dev/null &
+  _cmdpid=$!
+  ( sleep 2; kill "$_cmdpid" 2>/dev/null ) >/dev/null 2>&1 &
+  _wpid=$!
+  wait "$_cmdpid" 2>/dev/null
+  kill "$_wpid" 2>/dev/null; wait "$_wpid" 2>/dev/null
+  rm -f "$_tf" 2>/dev/null
+}
+
+# 1. Always consume stdin, even if we end up not using it ourselves — the
+# previous (chained) command needs the full, unconsumed JSON (§1.6).
+IN="$(cat 2>/dev/null)"
+
+# 2. Chaining: a pre-existing statusline saved (and integrity-pinned) by
+# `amiral statusline install`.
+PREV=""
+PREVCMD_FILE="$AMIRAL_HOME/statusline-prev-cmd"
+if [ -s "$PREVCMD_FILE" ] && _prevcmd_trusted "$PREVCMD_FILE"; then
+  PREVCMD="$(cat "$PREVCMD_FILE" 2>/dev/null)"
+  if [ -n "$PREVCMD" ]; then
+    PREV="$(printf '%s' "$IN" | _run_capped "$PREVCMD" | head -3)"
+  fi
+fi
+
+# 3. Build OUR segment from the cache. One pass, matched BY KEY, no eval
+# (file content is data, never code). Deliberately not a joined-fields read:
+# tab is IFS *whitespace* in bash, so consecutive tabs collapse and one
+# empty/absent value would silently shift every later field — wrong numbers
+# on screen. Key-matched parsing also honors the cache contract: unknown
+# keys ignored, absent keys default, order irrelevant.
+SEG=""
+PLAIN=""
+CV=""; GEN_EPOCH=""; MODE=""; NET_TOTAL=""; NET_TODAY=""
+PREM_TOTAL=""; PREM_TODAY=""; MEASURED=""; UNMEASURED=""; PENDING=""; ESC_TODAY=""
+if [ -f "$CACHE" ]; then
+  while IFS=$'\t' read -r K V; do
+    V="${V%$'\r'}"   # tolerate a CRLF-edited cache: a stray \r would fail every match below
+    case "$K" in
+      v)                  CV="$V" ;;
+      generated_epoch)    GEN_EPOCH="$V" ;;
+      mode)               MODE="$V" ;;
+      net_total)          NET_TOTAL="$V" ;;
+      net_today)          NET_TODAY="$V" ;;
+      prem_avoided_total) PREM_TOTAL="$V" ;;
+      prem_avoided_today) PREM_TODAY="$V" ;;
+      measured)           MEASURED="$V" ;;
+      unmeasured)         UNMEASURED="$V" ;;
+      pending)            PENDING="$V" ;;
+      esc_today)          ESC_TODAY="$V" ;;
+    esac
+  done < "$CACHE" 2>/dev/null
+
+  CORRUPT=0
+  [ "$CV" = "1" ] || CORRUPT=1
+  case "${NET_TOTAL:-}" in (*[!0-9.eE+-]*|"") CORRUPT=1 ;; esac
+  case "${NET_TODAY:-0}" in (*[!0-9.eE+-]*) CORRUPT=1 ;; esac
+
+  if [ "$CORRUPT" = "0" ]; then
+    # MUTE: suppresses good news only. A net-negative day always shows —
+    # honesty outranks mute (§1.5).
+    MUTED=0
+    if [ -f "$AMIRAL_HOME/statusline-mute" ] \
+       && awk -v n="${NET_TODAY:-0}" 'BEGIN{exit !(n>=0)}' 2>/dev/null; then
+      MUTED=1
+    fi
+
+    if [ "$MUTED" = "0" ]; then
+      # colors (respect NO_COLOR): from TODAY's sign, both modes.
+      if [ -n "${NO_COLOR:-}" ]; then
+        GREEN=""; AMBER=""; DIMC=""; RST=""
+      else
+        GREEN=$'\033[32m'; AMBER=$'\033[33m'; DIMC=$'\033[2m'; RST=$'\033[0m'
+      fi
+      # Clamp sub-cent noise: a -$0.003 rounding residual must not render as
+      # an amber "loss" for a magnitude the 2dp display shows as $0.00. A
+      # material negative day (|net| >= 0.005) is untouched — still amber,
+      # still shown, mute still can't hide it.
+      NET_TODAY="$(awk -v n="${NET_TODAY:-0}" 'BEGIN{ if (n<0.005 && n>-0.005) n=0; printf "%.6f", n }')"
+      NET_TOTAL="$(awk -v n="${NET_TOTAL:-0}" 'BEGIN{ if (n<0.005 && n>-0.005) n=0; printf "%.6f", n }')"
+      COL="$DIMC"
+      if awk -v n="${NET_TODAY:-0}" 'BEGIN{exit !(n>0)}' 2>/dev/null; then COL="$GREEN"
+      elif awk -v n="${NET_TODAY:-0}" 'BEGIN{exit !(n<0)}' 2>/dev/null; then COL="$AMBER"
+      fi
+
+      # sign + "$" + abs value, 2dp — "+$0.43" / "-$0.12" (ASCII minus).
+      signed_dollar() {
+        # `if (v==0) v=0` drops IEEE negative zero: -0.00 compares >=0 (sign
+        # "+") but %.2f would still print its sign bit -> "+$-0.00".
+        awk -v n="$1" 'BEGIN{ s=(n<0)?"-":"+"; v=(n<0)?-n:n; if (v==0) v=0; printf "%s$%.2f", s, v }'
+      }
+      # humanize a token count: <1000 raw, <100k one decimal + k, else integer k.
+      humanize() {
+        awk -v n="$1" 'BEGIN{ n0=n+0
+          if (n0<1000) printf "%d", n0
+          else if (n0<100000) printf "%.1fk", n0/1000
+          else printf "%dk", int(n0/1000) }'
+      }
+
+      if [ "${MODE:-api}" = "plan" ]; then
+        # SPEC §5bis: premium tokens avoided is the hero, never a $ figure.
+        PT="$(humanize "${PREM_TODAY:-0}")"; PA="$(humanize "${PREM_TOTAL:-0}")"
+        BODY="⚓ ${PT} prem tok avoided today · ${PA} total (${MEASURED:-0} meas)"
+      else
+        TODAYSTR="$(signed_dollar "${NET_TODAY:-0}")"
+        TOTALSTR="$(signed_dollar "${NET_TOTAL:-0}")"
+        ESCPART=""
+        if awk -v n="${NET_TODAY:-0}" 'BEGIN{exit !(n<0)}' 2>/dev/null && [ "${ESC_TODAY:-0}" != "0" ]; then
+          ESCWORD="escalations"; [ "${ESC_TODAY:-0}" = "1" ] && ESCWORD="escalation"
+          ESCPART=" (${ESC_TODAY} ${ESCWORD})"
+        fi
+        COVPART=" (${MEASURED:-0} meas"
+        [ "${UNMEASURED:-0}" != "0" ] && COVPART="${COVPART} · ${UNMEASURED} unmeas"
+        [ "${PENDING:-0}" != "0" ] && COVPART="${COVPART} · ${PENDING} pending"
+        COVPART="${COVPART})"
+        BODY="⚓ ${TODAYSTR} today${ESCPART} · ${TOTALSTR} net${COVPART}"
+      fi
+
+      # stale marker: NEWEST = max(mtime butin.jsonl, mtime receipts.jsonl),
+      # via a stat chain (macOS/BSD vs GNU) — never opens either file's
+      # content. generated_epoch comes straight from the cache: no date
+      # parsing anywhere in the renderer.
+      STALE_TEXT=""
+      GE="${GEN_EPOCH:-}"
+      case "$GE" in (*[!0-9]*|"") GE="" ;; esac
+      if [ -n "$GE" ]; then
+        BJ="$AMIRAL_HOME/butin.jsonl"; RJ="$AMIRAL_HOME/receipts.jsonl"
+        M1=0; M2=0
+        [ -f "$BJ" ] && M1="$(stat -c %Y "$BJ" 2>/dev/null || stat -f %m "$BJ" 2>/dev/null)"
+        [ -f "$RJ" ] && M2="$(stat -c %Y "$RJ" 2>/dev/null || stat -f %m "$RJ" 2>/dev/null)"
+        case "$M1" in (*[!0-9]*|"") M1=0 ;; esac
+        case "$M2" in (*[!0-9]*|"") M2=0 ;; esac
+        NEWEST=$M1; [ "$M2" -gt "$NEWEST" ] && NEWEST=$M2
+        if [ "$NEWEST" -gt 0 ] && [ $(( NEWEST - GE )) -gt 600 ]; then
+          STALE_TEXT=" · stale"
+        fi
+      fi
+
+      PLAIN="${BODY}${STALE_TEXT}"
+      STALE_COLORED=""
+      [ -n "$STALE_TEXT" ] && STALE_COLORED=" ${DIMC}· stale${RST}"
+      SEG="${COL}${BODY}${RST}${STALE_COLORED}"
+    fi
+  fi
+fi
+
+# 4. Compose (§1.6): a chained line must survive our degraded states, and we
+# must survive an absent/foreign previous line.
+if [ -z "$PREV" ]; then
+  [ -n "$SEG" ] && printf '%s\n' "$SEG"
+elif [ -z "$SEG" ]; then
+  printf '%s\n' "$PREV"
+else
+  FIRST="$(printf '%s\n' "$PREV" | head -1)"
+  COLS="${COLUMNS:-120}"
+  # `|0`: bash can materialize an exported-but-empty COLUMNS as literal "0"
+  # in tty-less contexts; 0 would force the 2-line branch on every render.
+  case "$COLS" in (*[!0-9]*|""|0) COLS=120 ;; esac
+  if [ $(( ${#FIRST} + ${#PLAIN} + 3 )) -le "$COLS" ] 2>/dev/null; then
+    printf '%s · %s\n' "$FIRST" "$SEG"
+    printf '%s\n' "$PREV" | tail -n +2
+  else
+    printf '%s\n' "$PREV"
+    printf '%s\n' "$SEG"
+  fi
+fi
+
+exit 0

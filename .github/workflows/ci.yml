@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Shell syntax
-        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh bin/amiral-doctor bin/amiral-trust bin/amiral-setup bin/amiral-savings bin/amiral-report bin/amiral-butin bin/amiral-journal adapters/claude-code/butin-collect.sh hooks/subagent-verify.sh
+        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh bin/amiral-doctor bin/amiral-trust bin/amiral-setup bin/amiral-savings bin/amiral-report bin/amiral-butin bin/amiral-journal bin/amiral-statusline lib/butin/cache.sh adapters/claude-code/butin-collect.sh adapters/claude-code/butin-receipt.sh hooks/subagent-verify.sh
 
       - name: Plugin manifests are valid JSON
         run: |
@@ -110,6 +110,21 @@ jobs:
       - name: Butin critical-path battery
         run: bash tests/test-butin.sh
 
+      - name: Statusline battery
+        run: bash tests/test-statusline.sh
+
       - name: No dangerous flags shipped
         run: |
           ! grep -R -- "--dangerously-skip-permissions" shell/ install.sh agents/ skills/
+
+  # BSD userland coverage: every stat -c || stat -f and date -d || date -j
+  # chain only exercises its GNU branch on ubuntu. macOS runs the BSD side
+  # (and Apple's bash 3.2), where past audits found real breaks.
+  batteries-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Butin critical-path battery (BSD userland)
+        run: bash tests/test-butin.sh
+      - name: Statusline battery (BSD userland)
+        run: bash tests/test-statusline.sh

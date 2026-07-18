@@ -5,6 +5,17 @@ CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 CLAUDE_MD="$CLAUDE_DIR/CLAUDE.md"
 
 echo "-> Removing amiral from: $CLAUDE_DIR"
+
+# statusline (v0.13): restore any displaced statusLine BEFORE amiral-butin
+# itself is removed below. Safe no-op if never installed — its own guard
+# refuses to touch a statusLine that isn't amiral's.
+if [ -f "$CLAUDE_DIR/amiral-butin" ]; then
+  bash "$CLAUDE_DIR/amiral-butin" statusline uninstall >/dev/null 2>&1 || true
+fi
+rm -f "$CLAUDE_DIR/butin/amiral-statusline.sh" \
+      "$CLAUDE_DIR/butin/amiral-statusline.ps1" \
+      "$CLAUDE_DIR/butin/cache.sh"
+
 rm -f "$CLAUDE_DIR/amiral-policy.md" \
       "$CLAUDE_DIR/agents/implementer.md" \
       "$CLAUDE_DIR/agents/grunt.md" \

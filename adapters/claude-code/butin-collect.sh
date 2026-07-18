@@ -20,6 +20,16 @@ mkdir -p "$AMIRAL_HOME"
 
 err() { echo "$(date -u +%FT%TZ) $*" >> "$ERRLOG" 2>/dev/null; }
 
+# v0.13: refresh the statusline cache at every exit — unmeasured events
+# change coverage numbers too, so all three exit sites below call this.
+# Self-gated on the opt-in flag inside cache.sh (no-op for non-statusline
+# users); cache.sh takes its own lock.
+refresh_cache() {
+  CACHESH="$(dirname "${BASH_SOURCE[0]}")/cache.sh"
+  [ -f "$CACHESH" ] || CACHESH="$(dirname "${BASH_SOURCE[0]}")/../../lib/butin/cache.sh"
+  bash "$CACHESH" >/dev/null 2>&1 || true
+}
+
 ROLE="worker"; [ "${1:-}" = "--brain" ] && ROLE="brain"
 
 INPUT="$(cat 2>/dev/null || true)"
@@ -66,6 +76,7 @@ if [ -z "$IN" ] || [ -z "$OUT" ] || [ -z "$MODEL" ]; then
   LINE="{\"v\":1,\"id\":\"$ID\",\"ts\":\"$TS\",\"agent\":\"$AGENT\",\"model\":\"${MODEL:-unknown}\",\"unmeasured\":true}"
   printf '%s\n' "$LINE" >> "$LOG"
   err "unmeasured event ($AGENT): transcript=$TRANSCRIPT in=$IN out=$OUT model=$MODEL"
+  refresh_cache
   exit 0
 fi
 
@@ -77,7 +88,7 @@ PVER=$(grep -oE 'pricing_version: [0-9-]+' "$PRICES" | head -1 | awk '{print $2}
 CHOSEN_R=$(rates "$MODEL"); BASE_R=$(rates "$BASE")
 if [ -z "$CHOSEN_R" ] || [ -z "$BASE_R" ]; then
   LINE="{\"v\":1,\"id\":\"$ID\",\"ts\":\"$TS\",\"agent\":\"$AGENT\",\"model\":\"${MODEL:-unknown}\",\"unmeasured\":true}"
-  printf '%s\n' "$LINE" >> "$LOG"; err "unknown pricing_id: chosen=$MODEL base=$BASE"; exit 0
+  printf '%s\n' "$LINE" >> "$LOG"; err "unknown pricing_id: chosen=$MODEL base=$BASE"; refresh_cache; exit 0
 fi
 
 # --- category-by-category costs (rule A2) ---
@@ -121,8 +132,11 @@ if [ -f "$STATE" ] && [ "$ROLE" != "brain" ]; then
   if [ "$GAP" -lt 900 ] && [ "$PRICIER" = "1" ] && { [ "$PAG" = "grunt" ] || [ "$PAG" = "$AGENT" ]; }; then
     OUTCOME="escalated"; ESCX="$PREAL"; ESCCFVOID="${PCF:-0}"
     # mark the failed cheap attempt E1 as superseded (by id), so core.awk
-    # excludes it from both real_sum and cf_sum (H8).
-    [ -n "${PID:-}" ] && printf '{"v":1,"id":"%s","supersedes":"%s","outcome":"superseded_marker"}\n' "supsede-$PID" "$PID" >> "$LOG"
+    # excludes it from both real_sum and cf_sum (H8). The marker carries a
+    # ts: date-sliced passes (statusline today-cache) must see it too, or an
+    # escalation day would render as a fabricated positive. A marker whose
+    # target sits outside the slice is a no-op in core.awk (tgt not seen).
+    [ -n "${PID:-}" ] && printf '{"v":1,"id":"%s","ts":"%s","supersedes":"%s","outcome":"superseded_marker"}\n' "supsede-$PID" "$TS" "$PID" >> "$LOG"
   fi
 fi
 if [ "$ROLE" != "brain" ]; then
@@ -135,4 +149,5 @@ LINE="{\"v\":1,\"id\":\"$ID\",\"ts\":\"$TS\",\"pricing_version\":\"${PVER:-unkno
 
 # atomic append: single write, guaranteed < PIPE_BUF (line is ~400 chars)
 [ ${#LINE} -lt 4000 ] && printf '%s\n' "$LINE" >> "$LOG" || err "line too long, dropped ($AGENT)"
+refresh_cache
 exit 0

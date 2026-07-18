@@ -30,9 +30,11 @@ MUST, what is roadmap, and what is refused.
   always printed. The design encodes honesty, non-negotiable.
 
 ## MUST — also implemented in v0.10.1
-- `amiral-butin init` / `rebaseline`: first-run config with auto-baseline,
-  frontier confirmation (the Fable trap), atomic write; history keeps the
-  baseline of its time.
+- `amiral-butin init` / `rebaseline` / `config`: first-run config with
+  auto-baseline, frontier confirmation (the Fable trap), atomic write;
+  `config` is the live re-config escape hatch (no detection, validated
+  baseline/mode, same future-only rule); history keeps the baseline of
+  its time.
 - Escalation heuristic in the collector (same session, cheaper→pricier
   within 15 min, grunt or same agent): the wasted cheap attempt is
   charged AGAINST amiral. Conservative: may over-penalize, never inflates.
@@ -45,9 +47,27 @@ MUST, what is roadmap, and what is refused.
 
 **Scope note:** butin & journal are POSIX shell (v1). PowerShell parity is an explicit backlog item, not an implied feature — never re-create the "6 files" class of inconsistency.
 
+## MUST — also implemented in v0.13
+- **Live config** (`amiral-butin config --baseline|--mode|--show`): the
+  direct escape hatch for re-baseline / re-mode mid-session, validated, no
+  detection ceremony; same future-only rule as `rebaseline` (history keeps
+  the baseline it was priced with). The collector re-reads
+  `butin-config.json` per event, so a change is live from the very next
+  task.
+- **Statusline**: opt-in, ambient line in Claude Code's status bar, fed by
+  an O(1) cache (`~/.amiral/butin-cache.tsv`) written atomically (compose
+  to a PID-unique temp file, then `mv`) by the same task-event producer
+  that writes `butin.jsonl`/`receipts.jsonl`, using the same `core.awk`
+  engine as the report — no second calculator, the renderer never reads
+  `butin.jsonl`. A net-negative day is never hidden (amber, explicit
+  minus sign); mute suppresses good news only. Commands: `amiral
+  statusline install|uninstall|mute|unmute|status` — install backs up
+  `settings.json` and restores any displaced statusline on uninstall.
+  PowerShell ships (`bin/amiral-statusline.ps1`, same cache format) but is
+  not auto-wired — parity stays backlog, per the scope note above.
+
 ## SHOULD (next)
 - `amiral-muster` CI action: replay verify.sh, contradict false trailers.
-- Statusline (1-line nominal; O(1) cache written atomically via mv).
 - Weekly HTML digest (light/dark), N+period+coverage baked in template.
 - Monthly log rotation; multi-machine merge = cat + dedup by id.
 
