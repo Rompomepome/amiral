@@ -61,10 +61,10 @@ Opt-in, ambient line in Claude Code's own status bar — the same numbers as
 `amiral-butin`'s report, computed once per task event and cached, so
 rendering it costs nothing on every turn.
 
-- **API mode**: `⚓ +$0.43 today · +$12.35 net (57 meas · 3 unmeas)`
+- **API mode**: `⚓ +$0.43 today · +$12.35 net (57 meas · 3 unmeas ▰▰▰▰▱)`
 - **Plan mode** (mirrors `butin-config.json`'s `mode`): `⚓ 2.3k prem tok
-  avoided today · 123k total (57 meas)` — premium tokens avoided is the
-  hero, never a dollar figure, same rule as the report (spec §5bis).
+  avoided today · 123k total (57 meas ▰▰▰▰▱)` — premium tokens avoided is
+  the hero, never a dollar figure, same rule as the report (spec §5bis).
 - **Amber = a net-negative day, and it is NEVER hidden.** Green when
   today's net is positive, dim when zero/no tasks yet, amber with an
   explicit minus sign when negative. `amiral statusline mute` suppresses
@@ -73,6 +73,46 @@ rendering it costs nothing on every turn.
 - A `· stale` suffix appears when the cache has fallen more than 10
   minutes behind the log — the collector is probably wired but failing;
   check `~/.amiral/butin-errors.log`.
+
+### Coverage bar
+
+The 5-cell bar (`▰`/`▱`, same idea as Claude Code's own context meter) is
+over the one honest denominator the cache has: `measured + pending +
+unmeasured` — every task event is exactly one of the three. Rounding is
+literal, not flattering: 5/5 filled only at *exactly* 100% coverage, floor
+otherwise, but never 0 filled cells when at least one event was measured
+(a sliver of real coverage must never look like zero). No bar exists for
+the dollar/premium-tokens totals — a savings figure has no natural
+maximum, so any "scale" drawn for it would be a made-up number.
+
+### Profile marker
+
+If the session was launched via one of the `amiral`/`amiral-solo`/
+`amiral-advisor`/`amiral-fine`/`amiral-ultra`/`matelot` shell functions, its
+name appears right after the anchor: `⚓ ultra · +$0.43 today · ...` (dim,
+regardless of the line's green/amber sign — it's identity, not news). With
+no money segment to show (fresh install, corrupt cache, muted positive
+day) the marker still renders alone: `⚓ ultra`. Mute only ever hides GOOD
+money news, never the marker, and never a net-negative day.
+
+**Be precise about what the marker does and doesn't mean.** The ⚓
+statusline itself is wired through Claude Code's *global* `statusLine`
+setting — every session on the machine renders it, launched by amiral's
+functions or not. The routing **policy** in `shell/amiral-profiles.sh` is
+also global (`~/.claude/CLAUDE.md` imports it), so it governs every
+session regardless of marker. The marker means only: *this session's
+`claude` process was launched by `<profile>`*. A bare `claude` shows no
+marker but still runs under the same global policy.
+
+Why not read `AMIRAL_BRAIN`/`AMIRAL_HANDS` instead of a dedicated var?
+Verified live: those are `export`ed by `_amiral_load_prefs`, so once one
+amiral function has run in a shell, they leak into every later **bare**
+`claude` launched from that same shell — a false "amiral on". A
+per-invocation, never-exported `AMIRAL_PROFILE` set only on each
+function's own `claude` command line is the only signal that can't lie
+this way. The renderer treats it as untrusted input reaching a terminal:
+anything not matching `^[a-z][a-z-]{0,11}$` is silently discarded (no
+marker), never printed raw.
 
 ### Commands
 

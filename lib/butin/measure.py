@@ -10,12 +10,16 @@ measured events. Correct by construction:
   * IDENTITY FROM THE SIDECAR — .meta.json carries agentType (and
     spawnDepth), so a worker is never a nameless "worker" fallback.
   * PENDING, NOT INVENTED — if a transcript isn't there yet, the receipt
-    stays pending and is retried next run. Coverage tells the truth:
-    measured / pending / unmeasurable.
+    stays pending and is retried next run. But pending isn't forever: the
+    platform garbage-collects subagent transcripts after some days, so a
+    receipt whose transcript is absent past BUTIN_RECEIPT_TTL_HOURS
+    (default 48) becomes unmeasurable ("transcript no longer on disk")
+    instead of being silently forgotten or advertised as pending forever.
+    Coverage tells the truth: measured / pending / unmeasurable.
   * REPRODUCIBLE — the same receipts + transcripts always yield the same
     number. Anyone can re-run it.
 """
-import json, os, sys, glob, time, shutil
+import calendar, json, os, sys, glob, time, shutil
 
 HOME = os.environ.get("AMIRAL_HOME", os.path.expanduser("~/.amiral"))
 RECEIPTS = os.path.join(HOME, "receipts.jsonl")
@@ -131,6 +135,18 @@ def _measure():
     # STABLE-GATE: 0 (default) = today's exact behavior, tests unaffected.
     # cache.sh sets this to 60 when calling from a hook.
     STABLE = int(os.environ.get("BUTIN_STABLE_SECS", "0") or 0)
+    # RECEIPT TTL: the platform garbage-collects subagent transcripts under
+    # .../subagents/ after some days (observed on real data: 20 receipts
+    # pointing at files gone). A receipt can't stay pending forever once its
+    # transcript is provably gone — that's false completeness, not honesty.
+    # 0 is legal (test knob): expire immediately once the transcript is absent.
+    try:
+        TTL_HOURS = float(os.environ.get("BUTIN_RECEIPT_TTL_HOURS", "48"))
+        # NaN != NaN — a "nan" knob must fall back to the documented default,
+        # not silently mean "never expire" (every NaN comparison is False).
+        if TTL_HOURS < 0 or TTL_HOURS != TTL_HOURS: TTL_HOURS = 48.0
+    except (TypeError, ValueError):
+        TTL_HOURS = 48.0
 
     done = set()
     brain_sessions = {}   # session -> True if a brain event already exists
@@ -151,6 +167,12 @@ def _measure():
         try: r = json.loads(line)
         except Exception: continue
         if r.get("id") in done: continue
+        # An id-less receipt can never be deduped against the done set, so no
+        # event may ever be written for it (re-runs would double-write), and
+        # r["id"] below must never raise: one malformed line crashing the run
+        # would wedge EVERY other receipt in the batch forever. Keep it.
+        if not r.get("id"):
+            kept.append(line); pending += 1; continue
         role = r.get("role")
         transcript = r.get("transcript")
         # STABLE-GATE: a transcript still being flushed measures low — pending,
@@ -162,6 +184,24 @@ def _measure():
                 age = None
             if age is not None and age < STABLE:
                 kept.append(line); pending += 1; continue
+        # RECEIPT TTL: absent transcript (never existed, or gc'd by the
+        # platform) is a DIFFERENT case than exists-but-unparseable — the
+        # latter must keep today's stay-pending behavior forever (it may
+        # still be mid-flush). Only "not there at all" ages out.
+        if not transcript or not os.path.isfile(transcript):
+            ts = r.get("ts")
+            receipt_age_h = None
+            if ts:
+                try:
+                    receipt_age_h = (time.time() - calendar.timegm(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ"))) / 3600.0
+                except (ValueError, OverflowError):
+                    receipt_age_h = None   # unparseable ts: never guess an age, keep pending
+            if receipt_age_h is not None and receipt_age_h > TTL_HOURS:
+                ag = agent_name(transcript, r.get("agent_hint"), r.get("role"))
+                new_events.append({"v": 2, "receipt": r["id"], "ts": r["ts"], "agent": ag,
+                      "unmeasurable": True, "reason": "transcript no longer on disk"})
+                unmeasurable += 1; continue
+            kept.append(line); pending += 1; continue
         # BRAIN dedup: the Stop hook fires once per turn, each receipt points at
         # the SAME growing main transcript. Only ONE brain event per session is
         # correct (the latest state). A new brain receipt for a session that

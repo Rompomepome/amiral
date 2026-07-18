@@ -195,5 +195,116 @@ fi
 rm -f "$ERR7"
 
 
+# ─── v0.13.1 receipt TTL: absent transcript ages out, never invented ───
+# Claude Code gc's ~/.claude/projects/<proj>/<session>/subagents/agent-*.jsonl
+# after some days. A receipt pointing at a transcript that is GONE (not just
+# unparseable) must not stay "pending" forever — past BUTIN_RECEIPT_TTL_HOURS
+# (default 48) it becomes unmeasurable with an honest reason, once, and is
+# drained from receipts.jsonl.
+export BUTIN_PRICES="$HERE/lib/butin/pricing.tsv"
+
+# TTL-1 expired: transcript absent, receipt older than default TTL (48h)
+AT1="$(mktemp -d)"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$AT1/butin-config.json"
+TS49=$(date -u -v-49H +%FT%TZ 2>/dev/null || date -u -d '49 hours ago' +%FT%TZ)
+printf '{"v":2,"id":"ttlX","ts":"%s","role":"worker","session":"s","agent_hint":"grunt","transcript":"/nonexistent/agent-gone.jsonl","cwd":"/x","measured":false}\n' "$TS49" > "$AT1/receipts.jsonl"
+OUT1=$(AMIRAL_HOME="$AT1" python3 "$HERE/lib/butin/measure.py")
+if grep -q "transcript no longer on disk" "$AT1/butin.jsonl" 2>/dev/null \
+   && grep -q '"receipt": "ttlX"' "$AT1/butin.jsonl" 2>/dev/null \
+   && ! grep -q "ttlX" "$AT1/receipts.jsonl" 2>/dev/null \
+   && echo "$OUT1" | grep -q "unmeasurable 1" \
+   && echo "$OUT1" | grep -q "pending 0"; then
+  ok "TTL-1 receipt older than TTL (49h>48h), transcript absent -> unmeasurable, drained"
+else
+  ko "TTL-1 out=[$OUT1] events=[$(cat "$AT1/butin.jsonl" 2>/dev/null)] receipts=[$(cat "$AT1/receipts.jsonl" 2>/dev/null)]"
+fi
+
+# TTL-2 young: same shape but ts=now -> stays pending, no unmeasurable event
+AT2="$(mktemp -d)"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$AT2/butin-config.json"
+TSNOW=$(date -u +%FT%TZ)
+printf '{"v":2,"id":"ttlY","ts":"%s","role":"worker","session":"s","agent_hint":"grunt","transcript":"/nonexistent/agent-gone.jsonl","cwd":"/x","measured":false}\n' "$TSNOW" > "$AT2/receipts.jsonl"
+OUT2=$(AMIRAL_HOME="$AT2" python3 "$HERE/lib/butin/measure.py")
+if grep -q "ttlY" "$AT2/receipts.jsonl" 2>/dev/null \
+   && grep -q '"measured":false' "$AT2/receipts.jsonl" 2>/dev/null \
+   && ! grep -q "transcript no longer on disk" "$AT2/butin.jsonl" 2>/dev/null \
+   && echo "$OUT2" | grep -q "pending 1"; then
+  ok "TTL-2 fresh receipt (transcript absent, age<TTL) stays pending, no unmeasurable event"
+else
+  ko "TTL-2 out=[$OUT2] events=[$(cat "$AT2/butin.jsonl" 2>/dev/null)] receipts=[$(cat "$AT2/receipts.jsonl" 2>/dev/null)]"
+fi
+
+# TTL-3 idempotence: re-run measure.py on AT1 -> exactly ONE event for ttlX
+AMIRAL_HOME="$AT1" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
+NTTL=$(grep -c "transcript no longer on disk" "$AT1/butin.jsonl" 2>/dev/null)
+[ "$NTTL" = "1" ] && ok "TTL-3 idempotent: re-run doesn't duplicate the unmeasurable event" || ko "TTL-3 count=$NTTL"
+
+# TTL-4 knob: young-side receipt + BUTIN_RECEIPT_TTL_HOURS=0 -> expires immediately
+AT4="$(mktemp -d)"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$AT4/butin-config.json"
+printf '{"v":2,"id":"ttlZ","ts":"%s","role":"worker","session":"s","agent_hint":"grunt","transcript":"/nonexistent/agent-gone.jsonl","cwd":"/x","measured":false}\n' "$TSNOW" > "$AT4/receipts.jsonl"
+OUT4T=$(AMIRAL_HOME="$AT4" BUTIN_RECEIPT_TTL_HOURS=0 python3 "$HERE/lib/butin/measure.py")
+if grep -q "transcript no longer on disk" "$AT4/butin.jsonl" 2>/dev/null \
+   && grep -q '"receipt": "ttlZ"' "$AT4/butin.jsonl" 2>/dev/null \
+   && ! grep -q "ttlZ" "$AT4/receipts.jsonl" 2>/dev/null \
+   && echo "$OUT4T" | grep -q "unmeasurable 1"; then
+  ok "TTL-4 BUTIN_RECEIPT_TTL_HOURS=0 expires a fresh receipt immediately (knob works)"
+else
+  ko "TTL-4 out=[$OUT4T] events=[$(cat "$AT4/butin.jsonl" 2>/dev/null)]"
+fi
+
+# TTL-5 preserved: transcript EXISTS but is unparseable garbage -> stays pending
+# regardless of age (the absent-vs-unparseable distinction must not blur)
+AT5="$(mktemp -d)"; mkdir -p "$AT5/tx"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$AT5/butin-config.json"
+GARBAGE="$AT5/tx/agent-garbage.jsonl"
+printf 'not json at all\n{also not json}\n' > "$GARBAGE"
+TS200=$(date -u -v-200H +%FT%TZ 2>/dev/null || date -u -d '200 hours ago' +%FT%TZ)
+printf '{"v":2,"id":"ttlW","ts":"%s","role":"worker","session":"s","agent_hint":"grunt","transcript":"%s","cwd":"/x","measured":false}\n' "$TS200" "$GARBAGE" > "$AT5/receipts.jsonl"
+OUT5T=$(AMIRAL_HOME="$AT5" python3 "$HERE/lib/butin/measure.py")
+if grep -q "ttlW" "$AT5/receipts.jsonl" 2>/dev/null \
+   && ! grep -q "transcript no longer on disk" "$AT5/butin.jsonl" 2>/dev/null \
+   && echo "$OUT5T" | grep -q "pending 1"; then
+  ok "TTL-5 existing-but-unparseable transcript stays pending regardless of age (200h old)"
+else
+  ko "TTL-5 out=[$OUT5T] events=[$(cat "$AT5/butin.jsonl" 2>/dev/null)] receipts=[$(cat "$AT5/receipts.jsonl" 2>/dev/null)]"
+fi
+
+# TTL-6 (review fix): an id-less receipt past the TTL must not crash the run —
+# a KeyError on r["id"] would wedge EVERY receipt in the batch forever (and
+# cache.sh swallows the rc, so the deadlock would be invisible). The id-less
+# line stays pending (no event may be written for something un-dedupable);
+# the healthy receipt in the same batch is still processed.
+AT6="$(mktemp -d)"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$AT6/butin-config.json"
+TS49B=$(date -u -v-49H +%FT%TZ 2>/dev/null || date -u -d '49 hours ago' +%FT%TZ)
+printf '{"v":2,"ts":"%s","role":"worker","session":"s","agent_hint":"grunt","transcript":"/nonexistent/no-id.jsonl","cwd":"/x","measured":false}\n' "$TS49B" > "$AT6/receipts.jsonl"
+printf '{"v":2,"id":"ttlG","ts":"%s","role":"worker","session":"s","agent_hint":"grunt","transcript":"/nonexistent/good.jsonl","cwd":"/x","measured":false}\n' "$TS49B" >> "$AT6/receipts.jsonl"
+OUT6T=$(AMIRAL_HOME="$AT6" python3 "$HERE/lib/butin/measure.py" 2>&1); RC6T=$?
+if [ "$RC6T" = "0" ] && grep -q '"receipt": "ttlG"' "$AT6/butin.jsonl" 2>/dev/null \
+   && grep -q "no-id" "$AT6/receipts.jsonl" 2>/dev/null \
+   && ! grep -q "Traceback" <<< "$OUT6T" \
+   && echo "$OUT6T" | grep -q "unmeasurable 1"; then
+  ok "TTL-6 id-less receipt past TTL: rc0, no crash, healthy receipt still expires, id-less kept"
+else
+  ko "TTL-6 rc=$RC6T out=[$OUT6T] receipts=[$(cat "$AT6/receipts.jsonl" 2>/dev/null)]"
+fi
+
+# TTL-7 (review fix): BUTIN_RECEIPT_TTL_HOURS=nan must fall back to the
+# documented 48h default (NaN comparisons are all False in Python — unguarded,
+# "nan" silently meant "never expire"). A 49h-old absent-transcript receipt
+# under TTL=nan must therefore expire exactly as under the default.
+AT7="$(mktemp -d)"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$AT7/butin-config.json"
+printf '{"v":2,"id":"ttlN","ts":"%s","role":"worker","session":"s","agent_hint":"grunt","transcript":"/nonexistent/nan.jsonl","cwd":"/x","measured":false}\n' "$TS49B" > "$AT7/receipts.jsonl"
+OUT7T=$(AMIRAL_HOME="$AT7" BUTIN_RECEIPT_TTL_HOURS=nan python3 "$HERE/lib/butin/measure.py")
+if grep -q '"receipt": "ttlN"' "$AT7/butin.jsonl" 2>/dev/null \
+   && echo "$OUT7T" | grep -q "unmeasurable 1"; then
+  ok "TTL-7 TTL=nan falls back to the 48h default (49h-old receipt expires, not never)"
+else
+  ko "TTL-7 out=[$OUT7T] events=[$(cat "$AT7/butin.jsonl" 2>/dev/null)]"
+fi
+
+
 echo ""; echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

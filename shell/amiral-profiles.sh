@@ -23,6 +23,25 @@ _amiral_first_run() {
   fi
 }
 
+# --- Statusline profile marker (v0.13.1) ---
+# Every profile function below prefixes its `claude` invocation with
+# AMIRAL_PROFILE=<name> — scoped to that ONE command line, never `export`ed
+# — so bin/amiral-statusline can show "this session was launched via
+# <profile>". Why not just read AMIRAL_BRAIN/AMIRAL_HANDS instead? Verified
+# live: _amiral_load_prefs sources ~/.claude/amiral.env with `export`, which
+# then pollutes the CURRENT interactive shell — a later BARE `claude` launch
+# in that same shell still carries AMIRAL_BRAIN/AMIRAL_HANDS from the
+# earlier amiral() call and would render a FALSE "amiral on" marker. A
+# dedicated, never-exported, per-command variable is the only honest
+# signal; guessing from those vars is forbidden.
+#
+# Scope note (see docs/butin.md): the routing POLICY in this file is
+# imported into ~/.claude/CLAUDE.md, so it is GLOBAL — it governs every
+# Claude Code session, including a bare `claude` launch that carries no
+# marker at all. Only the PROFILE marker is per-session: it means "this
+# session's `claude` was launched by <profile>", nothing more, and its
+# absence does not mean the policy is off.
+
 # THE command. Capable brain, workers forced cheap, admiral routes all.
 amiral() {
   case "${1:-}" in statusline)
@@ -31,7 +50,7 @@ amiral() {
   esac
   _amiral_first_run
   _amiral_load_prefs
-  CLAUDE_CODE_SUBAGENT_MODEL="${AMIRAL_HANDS:-sonnet}" \
+  CLAUDE_CODE_SUBAGENT_MODEL="${AMIRAL_HANDS:-sonnet}" AMIRAL_PROFILE=amiral \
   claude --model "${AMIRAL_BRAIN:-opus}" --effort high "$@"
 }
 
@@ -40,7 +59,7 @@ amiral() {
 # All-Sonnet fleet: lightest footprint, ideal on a Pro plan.
 amiral-solo() {
   _amiral_load_prefs
-  CLAUDE_CODE_SUBAGENT_MODEL="${AMIRAL_HANDS:-sonnet}" \
+  CLAUDE_CODE_SUBAGENT_MODEL="${AMIRAL_HANDS:-sonnet}" AMIRAL_PROFILE=solo \
   claude --model sonnet --effort high "$@"
 }
 
@@ -50,12 +69,14 @@ amiral-solo() {
 # worker rate, frontier reasoning only where it changes the outcome.
 amiral-advisor() {
   _amiral_load_prefs
+  AMIRAL_PROFILE=advisor \
   claude --model "${AMIRAL_HANDS:-sonnet}" --effort high "$@"
 }
 
 # Workers follow their own frontmatter (Haiku for grunt work).
 amiral-fine() {
   _amiral_load_prefs
+  AMIRAL_PROFILE=fine \
   claude --model "${AMIRAL_BRAIN:-opus}" --effort high "$@"
 }
 
@@ -63,13 +84,14 @@ amiral-fine() {
 # QUOTA/CREDIT INCINERATOR. Launch, then type /effort and pick ultracode.
 amiral-ultra() {
   _amiral_load_prefs
-  CLAUDE_CODE_SUBAGENT_MODEL="${AMIRAL_HANDS:-sonnet}" \
+  CLAUDE_CODE_SUBAGENT_MODEL="${AMIRAL_HANDS:-sonnet}" AMIRAL_PROFILE=ultra \
   claude --model "${AMIRAL_BRAIN:-fable}" "$@"
 }
 
 # Pure worker session (no admiral), throwaway small stuff, cheap model.
 matelot() {
   _amiral_load_prefs
+  AMIRAL_PROFILE=matelot \
   claude --model "${AMIRAL_HANDS:-sonnet}" --effort high "$@"
 }
 

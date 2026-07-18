@@ -1,5 +1,76 @@
 # Changelog
 
+## v0.13.1 - 2026-07-18
+**Receipt TTL (pending is never forever) + statusline profile marker +
+coverage bar.**
+- **Fix: receipts could stay "pending" forever** — Claude Code
+  garbage-collects subagent transcripts
+  (`~/.claude/projects/…/subagents/agent-*.jsonl`) after some days; 20
+  real receipts from Jul 13 pointed at transcripts that no longer exist
+  and could NEVER be measured, yet the coverage line advertised "20
+  pending" indefinitely — a soft false-completeness. Now a receipt whose
+  transcript is ABSENT past `BUTIN_RECEIPT_TTL_HOURS` (default 48, `0` =
+  expire immediately) becomes one `unmeasurable` event with reason
+  `"transcript no longer on disk"`, written exactly once (idempotent via
+  the existing receipt/done set) and drained from `receipts.jsonl`.
+  Absent-but-young stays pending (the async flush race is minutes, not
+  days); exists-but-unparseable stays pending (unchanged); an
+  unparseable receipt `ts` stays pending (never guess an age). Both
+  sides of the TTL boundary are tested.
+- **Platform findings documented in `ports/BUTIN.md`** (load-bearing for
+  ports): on this platform `agent_type` is NOT delivered in the
+  SubagentStop payload — `agent_hint` was empty on all 20 real receipts
+  observed; agent identity must come from the transcript's `.meta.json`
+  sidecar. And subagent transcripts are GC'd, hence the TTL above.
+- **New: statusline profile marker** — `⚓ ultra · +$0.43 today · …`
+  shows which profile launched THIS session (`amiral` / `solo` /
+  `advisor` / `fine` / `ultra` / `matelot`); marker alone (`⚓ solo`)
+  when there is no money segment; no marker at all for a bare `claude`
+  session. Signal is a dedicated `AMIRAL_PROFILE` variable set as a
+  per-invocation prefix on each profile function's `claude` command —
+  NOT inferred from `AMIRAL_BRAIN`/`AMIRAL_HANDS`, which were verified
+  live to leak from the sourced `amiral.env` exports into later bare
+  `claude` launches (a false "amiral on" is worse than no indicator).
+  The renderer sanitizes the value (untrusted env; `^[a-z][a-z-]{0,11}$`
+  or nothing). Honesty note, also in the docs: the routing POLICY is
+  global (imported into `~/.claude/CLAUDE.md`) and applies to every
+  session; only the PROFILE is per-session — the marker never claims
+  otherwise.
+- **New: coverage bar** — a 5-cell `▰▰▰▰▱` bar for COVERAGE ONLY
+  (measured / measured+pending+unmeasurable — a real denominator),
+  appended to the coverage parens in both api and plan modes, only when
+  total > 0. Honesty rounding: 5/5 cells only at exactly 100%, floor
+  otherwise, never 0 cells while measured > 0. Deliberately NO bar for
+  savings: no natural maximum exists, an invented scale would be a
+  fabricated number. Anchor-glyph "motion" derived from
+  `generated_epoch` was considered and SKIPPED (no natural frame set for
+  ⚓; movement risked reading as decoration, which the design forbids).
+  Amber-on-negative-day and the mute rule unchanged and still
+  unhideable.
+- **Fresh-context review fixes (post-implementation):**
+  - The coverage bar could paint a filled cell for ZERO real coverage:
+    BWK awk's `-v` strnum rule turns `m>0` into a STRING comparison for
+    a non-numeric `measured` value from a corrupted cache
+    (`"corrupt" > "0"` is true), and a negative count cancels the
+    denominator into a false-full bar. The renderer's CORRUPT gate now
+    requires digits-only `measured`/`unmeasured`/`pending`/`esc_today`
+    (they are counts by construction); a hostile cache goes silent
+    (§1.8 treat-as-absent) instead of rendering a fabricated bar —
+    the profile marker (session identity, not cache data) survives.
+  - An id-less receipt crossing the TTL raised an uncaught `KeyError`
+    (`r["id"]`), crashing the run before the atomic rewrite and wedging
+    EVERY receipt in the batch forever — invisibly, since cache.sh
+    swallows the exit code. Id-less receipts (un-dedupable, so no event
+    may ever be written for them) now stay pending, and the rest of the
+    batch processes normally.
+  - `BUTIN_RECEIPT_TTL_HOURS=nan` silently meant "never expire" (NaN
+    comparisons are all False); it now falls back to the documented 48.
+- Batteries: 21 → 28 (butin: TTL boundary both sides, idempotence, TTL=0
+  knob, unparseable-transcript regression guard, id-less no-crash,
+  NaN knob) and 38 → 57 (statusline: marker sanitization/injection,
+  marker-alone states, bar honesty rounding, chaining with marker+bar,
+  hermetic `AMIRAL_PROFILE` isolation, hostile count values).
+
 ## v0.13.0 - 2026-07-15
 **Live config (part 1) + statusline (part 2) of the DESIGN-NOTES.md v0.13
 pass — the receipt (§3) is next.**

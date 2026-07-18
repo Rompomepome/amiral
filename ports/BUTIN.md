@@ -35,3 +35,27 @@ An adapter ships a `capabilities` list. The core and CLI adapt: absent
 → dollars, not quota. The mock adapter in tests declares only
 `task_event` + `pricing_id` and must still produce a correct API-mode
 report — that's the guarantee the core doesn't depend on any harness.
+
+## Platform findings (Claude Code, macOS, verified 2026-07)
+
+Two load-bearing quirks observed on real usage, not in any published spec:
+
+- **`agent_type` is not delivered in the SubagentStop payload.** On this
+  platform `agent_hint` was empty on all 20 real receipts observed — the
+  field a port would naively read for agent identity simply isn't there.
+  Agent identity must instead come from the transcript's `.meta.json`
+  sidecar (`agentType`), written alongside the transcript file. Any port
+  that only trusts the hook payload's hint will silently mislabel every
+  subagent as a generic fallback ("worker"). This is why `agent_name()`
+  in `lib/butin/measure.py` treats the hint as a last resort, never the
+  primary source.
+- **Subagent transcripts are garbage-collected.** Files under
+  `~/.claude/projects/<proj>/<session>/subagents/agent-*.jsonl` are
+  deleted by the platform after some days. A receipt whose transcript
+  has vanished can never be measured — keeping it "pending" forever
+  would be false completeness, not honesty. `measure.py` enforces a
+  receipt TTL (`BUTIN_RECEIPT_TTL_HOURS`, default 48): once a receipt's
+  transcript is absent (not merely unparseable — that case still stays
+  pending, it may just be mid-flush) and its age exceeds the TTL, it
+  becomes `unmeasurable` with `"reason": "transcript no longer on disk"`
+  and is drained from `receipts.jsonl`. Pending must never be forever.

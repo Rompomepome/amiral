@@ -78,6 +78,24 @@ fi
 # empty/absent value would silently shift every later field — wrong numbers
 # on screen. Key-matched parsing also honors the cache contract: unknown
 # keys ignored, absent keys default, order irrelevant.
+
+# AMIRAL_PROFILE: an untrusted env var reaching a terminal (this renderer
+# subprocess inherits the launching shell's exported vars — verified live).
+# Sanitize before it ever touches the UI: only ^[a-z][a-z-]{0,11}$ passes
+# (a plain case/glob check, no regex tool needed); anything else is treated
+# as unset — no marker, and the raw value is never printed. See
+# shell/amiral-profiles.sh for why this dedicated, never-exported,
+# per-command var is the only honest profile signal (AMIRAL_BRAIN/
+# AMIRAL_HANDS leak from `export`ed prefs into every later bare `claude`
+# launch in the same shell — a false "amiral on").
+PROFILE=""
+_p="${AMIRAL_PROFILE:-}"
+case "$_p" in
+  [!a-z]*|"") : ;;                # doesn't start a-z, or empty/unset -> reject
+  *[!a-z-]*)  : ;;                # a char outside [a-z-] anywhere -> reject
+  *) [ "${#_p}" -le 12 ] && PROFILE="$_p" ;;
+esac
+
 SEG=""
 PLAIN=""
 CV=""; GEN_EPOCH=""; MODE=""; NET_TOTAL=""; NET_TODAY=""
@@ -104,6 +122,19 @@ if [ -f "$CACHE" ]; then
   [ "$CV" = "1" ] || CORRUPT=1
   case "${NET_TOTAL:-}" in (*[!0-9.eE+-]*|"") CORRUPT=1 ;; esac
   case "${NET_TODAY:-0}" in (*[!0-9.eE+-]*) CORRUPT=1 ;; esac
+  # Count fields are non-negative integers by construction (core.awk %d /
+  # cache.sh awk count). Anything else is a corrupt cache and the whole
+  # segment goes silent (§1.8 treat-as-absent) — NOT rendered raw. Without
+  # this, BWK awk's -v strnum rule turns covbar's `m>0` into a STRING
+  # comparison for non-numeric m ("corrupt" > "0" is true), which would
+  # paint a filled cell for zero real coverage — a fabricated measurement.
+  # A negative count ("-5") is equally impossible and would cancel inside
+  # the bar's denominator into a false-full bar; the digits-only gate
+  # rejects both.
+  case "${MEASURED:-0}"   in (*[!0-9]*) CORRUPT=1 ;; esac
+  case "${UNMEASURED:-0}" in (*[!0-9]*) CORRUPT=1 ;; esac
+  case "${PENDING:-0}"    in (*[!0-9]*) CORRUPT=1 ;; esac
+  case "${ESC_TODAY:-0}"  in (*[!0-9]*) CORRUPT=1 ;; esac
 
   if [ "$CORRUPT" = "0" ]; then
     # MUTE: suppresses good news only. A net-negative day always shows —
@@ -146,10 +177,53 @@ if [ -f "$CACHE" ]; then
           else printf "%dk", int(n0/1000) }'
       }
 
+      # Coverage bar: a small 5-cell bar (echoes Claude Code's own context
+      # meter — filled/empty cells) over the ONLY honest denominator this
+      # cache has: measured+pending+unmeasured, every event is exactly one
+      # of the three. HONESTY ROUNDING: 5/5 filled only at EXACTLY 100%
+      # coverage; floor otherwise; never 0 filled when measured>0 (a sliver
+      # of real coverage must never render as literally nothing). One awk
+      # call, this file's idiom (see signed_dollar/humanize above).
+      # No such bar for savings/prem-avoided totals anywhere in this file:
+      # a dollar or token total has NO natural maximum, so any "scale" for
+      # it would be a fabricated number — never draw one.
+      covbar() {
+        awk -v m="$1" -v p="$2" -v u="$3" 'BEGIN{
+          # Force numeric context up front: -v strings compare as STRINGS in
+          # relationals when they do not look numeric ("corrupt">0 is true in
+          # BWK awk). The digits-only CORRUPT gate upstream already rejects
+          # such caches; this keeps covbar honest even if called differently.
+          m=m+0; p=p+0; u=u+0
+          tot = m+p+u
+          if (tot<=0) exit
+          frac = m/tot
+          filled = int(frac*5)
+          if (frac>=1) filled=5
+          if (filled==0 && m>0) filled=1
+          if (filled>5) filled=5
+          if (filled<0) filled=0
+          bar=""
+          for (i=0;i<filled;i++) bar = bar "▰"
+          for (i=filled;i<5;i++) bar = bar "▱"
+          printf "%s", bar
+        }'
+      }
+
+      # HEAD: the profile marker, when present, sits right after the anchor
+      # ("⚓ ultra · ..."); with no profile, output is unchanged ("⚓ ...").
+      if [ -n "$PROFILE" ]; then
+        HEAD="⚓ ${PROFILE} · "
+      else
+        HEAD="⚓ "
+      fi
+
       if [ "${MODE:-api}" = "plan" ]; then
         # SPEC §5bis: premium tokens avoided is the hero, never a $ figure.
         PT="$(humanize "${PREM_TODAY:-0}")"; PA="$(humanize "${PREM_TOTAL:-0}")"
-        BODY="⚓ ${PT} prem tok avoided today · ${PA} total (${MEASURED:-0} meas)"
+        BAR="$(covbar "${MEASURED:-0}" "${PENDING:-0}" "${UNMEASURED:-0}")"
+        MEASPART="${MEASURED:-0} meas"
+        [ -n "$BAR" ] && MEASPART="${MEASPART} ${BAR}"
+        BODY="${HEAD}${PT} prem tok avoided today · ${PA} total (${MEASPART})"
       else
         TODAYSTR="$(signed_dollar "${NET_TODAY:-0}")"
         TOTALSTR="$(signed_dollar "${NET_TOTAL:-0}")"
@@ -161,8 +235,10 @@ if [ -f "$CACHE" ]; then
         COVPART=" (${MEASURED:-0} meas"
         [ "${UNMEASURED:-0}" != "0" ] && COVPART="${COVPART} · ${UNMEASURED} unmeas"
         [ "${PENDING:-0}" != "0" ] && COVPART="${COVPART} · ${PENDING} pending"
+        BAR="$(covbar "${MEASURED:-0}" "${PENDING:-0}" "${UNMEASURED:-0}")"
+        [ -n "$BAR" ] && COVPART="${COVPART} ${BAR}"
         COVPART="${COVPART})"
-        BODY="⚓ ${TODAYSTR} today${ESCPART} · ${TOTALSTR} net${COVPART}"
+        BODY="${HEAD}${TODAYSTR} today${ESCPART} · ${TOTALSTR} net${COVPART}"
       fi
 
       # stale marker: NEWEST = max(mtime butin.jsonl, mtime receipts.jsonl),
@@ -188,8 +264,31 @@ if [ -f "$CACHE" ]; then
       PLAIN="${BODY}${STALE_TEXT}"
       STALE_COLORED=""
       [ -n "$STALE_TEXT" ] && STALE_COLORED=" ${DIMC}· stale${RST}"
-      SEG="${COL}${BODY}${RST}${STALE_COLORED}"
+      if [ -n "$PROFILE" ]; then
+        # Profile token is dim-colored on its own, never the sign color
+        # (green/amber) the rest of the line takes from today's net — it is
+        # session identity, not good/bad news.
+        BODY_TAIL="${BODY#"${HEAD}"}"
+        SEG="${COL}⚓ ${RST}${DIMC}${PROFILE}${RST}${COL} · ${BODY_TAIL}${RST}${STALE_COLORED}"
+      else
+        SEG="${COL}${BODY}${RST}${STALE_COLORED}"
+      fi
     fi
+  fi
+fi
+
+# Marker-alone fallback: a valid profile with NO money segment (no cache
+# file, corrupt cache, or a muted positive day — all three leave SEG empty
+# above) still renders the anchor + profile alone, dim. The marker is
+# session identity, not good news: mute suppresses money, never identity.
+# Self-contained NO_COLOR handling — the block above may never have run
+# (cache missing/corrupt), so DIMC/RST are not guaranteed to be set here.
+if [ -z "$SEG" ] && [ -n "$PROFILE" ]; then
+  PLAIN="⚓ ${PROFILE}"
+  if [ -n "${NO_COLOR:-}" ]; then
+    SEG="$PLAIN"
+  else
+    SEG="$(printf '\033[2m⚓ %s\033[0m' "$PROFILE")"
   fi
 fi
 
@@ -205,6 +304,11 @@ else
   # `|0`: bash can materialize an exported-but-empty COLUMNS as literal "0"
   # in tty-less contexts; 0 would force the 2-line branch on every render.
   case "$COLS" in (*[!0-9]*|""|0) COLS=120 ;; esac
+  # NOTE: LC_ALL=C makes ${#FIRST}/${#PLAIN} count BYTES, and the anchor
+  # plus the coverage bar's cells are multibyte UTF-8 glyphs — so this
+  # check overestimates visible width and can wrap to two lines slightly
+  # earlier than strictly necessary. Conservative-safe direction (it never
+  # UNDER-wraps into an overflowing single line); accepted, not fixed.
   if [ $(( ${#FIRST} + ${#PLAIN} + 3 )) -le "$COLS" ] 2>/dev/null; then
     printf '%s · %s\n' "$FIRST" "$SEG"
     printf '%s\n' "$PREV" | tail -n +2

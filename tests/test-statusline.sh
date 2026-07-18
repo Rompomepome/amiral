@@ -7,6 +7,11 @@
 # runs separately (CI: a dedicated "Statusline battery" step).
 export LC_ALL=C
 set -uo pipefail
+# Hermetic regardless of the shell that launched this battery: the profile
+# marker tests below (T-S16/17/19) explicitly SET AMIRAL_PROFILE per-case;
+# an inherited value here would poison every other EXACT-match test in the
+# file (they never set it, and expect the no-marker line).
+unset AMIRAL_PROFILE 2>/dev/null || true
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 PASS=0; FAIL=0
 ok(){ echo "  ok  $1"; PASS=$((PASS+1)); }
@@ -45,7 +50,7 @@ mkcache() {
 H1="$(mktemp -d)"
 mkcache "$H1" api 12.3456 0.4321 0 0 57 3 0 0 "$(date +%s)"
 OUT=$(printf '{}' | AMIRAL_HOME="$H1" NO_COLOR=1 bash "$RENDER"); RC=$?
-EXPECT='⚓ +$0.43 today · +$12.35 net (57 meas · 3 unmeas)'
+EXPECT='⚓ +$0.43 today · +$12.35 net (57 meas · 3 unmeas ▰▰▰▰▱)'
 if [ "$RC" = "0" ] && [ "$OUT" = "$EXPECT" ]; then
   ok "T-S1 api render exact match"
 else
@@ -263,7 +268,7 @@ OUT=$(printf '{}' | AMIRAL_HOME="$H8" NO_COLOR=1 bash "$RENDER"); RC=$?
 T1=$(date +%s)
 chmod 644 "$H8/butin.jsonl"
 DELTA=$(( T1 - T0 ))
-EXPECT8='⚓ +$0.43 today · +$12.35 net (57 meas · 3 unmeas)'
+EXPECT8='⚓ +$0.43 today · +$12.35 net (57 meas · 3 unmeas ▰▰▰▰▱)'
 # generous CI bound (second resolution, portable); nominal target is <100ms.
 if [ "$RC" = "0" ] && [ "$OUT" = "$EXPECT8" ] && [ "$DELTA" -le 1 ]; then
   ok "T-S8 never opens butin.jsonl (chmod 000 survived), rc0, correct line, delta=${DELTA}s"
@@ -342,7 +347,7 @@ H10="$(mktemp -d)"
   printf 'unmeasured\t3\n'
 } > "$H10/butin-cache.tsv"
 OUT=$(printf '{}' | AMIRAL_HOME="$H10" NO_COLOR=1 bash "$RENDER"); RC=$?
-EXPECT10='⚓ -$0.12 today (1 escalation) · +$12.35 net (57 meas · 3 unmeas)'
+EXPECT10='⚓ -$0.12 today (1 escalation) · +$12.35 net (57 meas · 3 unmeas ▰▰▰▰▱)'
 if [ "$RC" = "0" ] && [ "$OUT" = "$EXPECT10" ]; then
   ok "T-S10a sparse+shuffled cache renders exactly (key-matched, not positional)"
 else
@@ -460,6 +465,193 @@ if [ "$RC" = "0" ] && [ "$DELTA" -le 4 ] && printf '%s' "$OUT" | grep -qF '⚓';
   ok "T-S15 hung prev-cmd capped (${DELTA}s), our segment still renders"
 else
   ko "T-S15 rc=$RC delta=${DELTA}s out=[$OUT]"
+fi
+
+# ─── T-S16: profile marker sanitization (v0.13.1 PART 2/3) ───
+H16="$(mktemp -d)"
+mkcache "$H16" api 12.3456 0.4321 0 0 57 3 0 0 "$(date +%s)"
+EXPECT_NOMARK='⚓ +$0.43 today · +$12.35 net (57 meas · 3 unmeas ▰▰▰▰▱)'
+
+OUT=$(printf '{}' | AMIRAL_HOME="$H16" AMIRAL_PROFILE=ultra NO_COLOR=1 bash "$RENDER")
+if [ "$OUT" = "⚓ ultra · +\$0.43 today · +\$12.35 net (57 meas · 3 unmeas ▰▰▰▰▱)" ]; then
+  ok "T-S16a valid profile: marker sits right after the anchor"
+else
+  ko "T-S16a out=[$OUT]"
+fi
+
+OUT=$(printf '{}' | AMIRAL_HOME="$H16" NO_COLOR=1 bash "$RENDER")
+if [ "$OUT" = "$EXPECT_NOMARK" ]; then
+  ok "T-S16b unset AMIRAL_PROFILE: byte-identical to the no-profile line"
+else
+  ko "T-S16b out=[$OUT]"
+fi
+
+PWN16="$H16/pwn"
+OUT=$(printf '{}' | AMIRAL_HOME="$H16" AMIRAL_PROFILE="\$(touch $PWN16)" NO_COLOR=1 bash "$RENDER")
+if [ ! -e "$PWN16" ] && [ "$OUT" = "$EXPECT_NOMARK" ]; then
+  ok "T-S16c command-substitution injection ignored, no file created, no-marker line"
+else
+  ko "T-S16c out=[$OUT] pwn=$([ -e "$PWN16" ] && echo yes || echo no)"
+fi
+
+OUT=$(printf '{}' | AMIRAL_HOME="$H16" AMIRAL_PROFILE="$(printf 'a\033[31mb')" NO_COLOR=1 bash "$RENDER")
+if [ "$OUT" = "$EXPECT_NOMARK" ]; then
+  ok "T-S16d ANSI-escape-bearing value ignored"
+else
+  ko "T-S16d out=[$OUT]"
+fi
+
+OUT=$(printf '{}' | AMIRAL_HOME="$H16" AMIRAL_PROFILE="abcdefghijklm" NO_COLOR=1 bash "$RENDER")
+if [ "$OUT" = "$EXPECT_NOMARK" ]; then
+  ok "T-S16e overlong (13-char) profile ignored"
+else
+  ko "T-S16e out=[$OUT]"
+fi
+
+OUT=$(printf '{}' | AMIRAL_HOME="$H16" AMIRAL_PROFILE="ULTRA" NO_COLOR=1 bash "$RENDER")
+if [ "$OUT" = "$EXPECT_NOMARK" ]; then
+  ok "T-S16f uppercase profile ignored"
+else
+  ko "T-S16f out=[$OUT]"
+fi
+
+# ─── T-S17: profile marker alone (no money segment) ───
+H17="$(mktemp -d)"
+OUT=$(printf '{}' | AMIRAL_HOME="$H17" AMIRAL_PROFILE=solo NO_COLOR=1 bash "$RENDER"); RC=$?
+if [ "$RC" = "0" ] && [ "$OUT" = "⚓ solo" ]; then
+  ok "T-S17a no cache + valid profile: marker alone, rc0"
+else
+  ko "T-S17a rc=$RC out=[$OUT]"
+fi
+
+mkcache "$H17" api 12.3456 0.4321 0 0 57 3 0 0 "$(date +%s)"
+touch "$H17/statusline-mute"
+OUT=$(printf '{}' | AMIRAL_HOME="$H17" AMIRAL_PROFILE=amiral NO_COLOR=1 bash "$RENDER")
+if [ "$OUT" = "⚓ amiral" ]; then
+  ok "T-S17b muted positive day + profile: marker only, no dollar figures"
+else
+  ko "T-S17b out=[$OUT]"
+fi
+
+mkcache "$H17" api 12.3456 -0.12 0 0 57 3 0 1 "$(date +%s)"
+OUT=$(printf '{}' | AMIRAL_HOME="$H17" AMIRAL_PROFILE=amiral NO_COLOR=1 bash "$RENDER")
+if echo "$OUT" | grep -qF -- '-$0.12' && echo "$OUT" | grep -qF '⚓ amiral ·'; then
+  ok "T-S17c muted NEGATIVE day + profile: negative figure still shows, marker present (mute rule intact)"
+else
+  ko "T-S17c out=[$OUT]"
+fi
+
+# ─── T-S18: coverage bar honesty rounding ───
+H18="$(mktemp -d)"
+mkcache "$H18" api 1.0 1.0 0 0 10 0 0 0 "$(date +%s)"
+OUT=$(printf '{}' | AMIRAL_HOME="$H18" NO_COLOR=1 bash "$RENDER")
+FILLED=$(echo "$OUT" | grep -o '▰' | wc -l | tr -d ' ')
+if [ "$FILLED" = "5" ]; then
+  ok "T-S18a 100% coverage (10 meas, 0 pending, 0 unmeas) -> 5 filled cells"
+else
+  ko "T-S18a out=[$OUT] filled=$FILLED"
+fi
+
+mkcache "$H18" api 1.0 1.0 0 0 199 0 1 0 "$(date +%s)"
+OUT=$(printf '{}' | AMIRAL_HOME="$H18" NO_COLOR=1 bash "$RENDER")
+FILLED=$(echo "$OUT" | grep -o '▰' | wc -l | tr -d ' ')
+if [ "$FILLED" = "4" ]; then
+  ok "T-S18b 199 meas + 1 pending (99.5%) floors to 4, not 5"
+else
+  ko "T-S18b out=[$OUT] filled=$FILLED"
+fi
+
+mkcache "$H18" api 1.0 1.0 0 0 1 99 0 0 "$(date +%s)"
+OUT=$(printf '{}' | AMIRAL_HOME="$H18" NO_COLOR=1 bash "$RENDER")
+FILLED=$(echo "$OUT" | grep -o '▰' | wc -l | tr -d ' ')
+if [ "$FILLED" = "1" ]; then
+  ok "T-S18c 1 meas / 99 unmeas -> at least 1 filled cell, not 0"
+else
+  ko "T-S18c out=[$OUT] filled=$FILLED"
+fi
+
+mkcache "$H18" api 0 0 0 0 0 0 0 0 "$(date +%s)"
+OUT=$(printf '{}' | AMIRAL_HOME="$H18" NO_COLOR=1 bash "$RENDER")
+if ! echo "$OUT" | grep -qF '▰' && ! echo "$OUT" | grep -qF '▱'; then
+  ok "T-S18d measured=unmeasured=pending=0 -> no bar at all"
+else
+  ko "T-S18d out=[$OUT]"
+fi
+
+mkcache "$H18" api 1.0 1.0 0 0 5 0 5 0 "$(date +%s)"
+OUT=$(printf '{}' | AMIRAL_HOME="$H18" NO_COLOR=1 bash "$RENDER")
+FILLED=$(echo "$OUT" | grep -o '▰' | wc -l | tr -d ' ')
+if [ "$FILLED" = "2" ]; then
+  ok "T-S18e pending counted in denominator: 5 meas / 5 pending -> half bar (2 filled)"
+else
+  ko "T-S18e out=[$OUT] filled=$FILLED"
+fi
+
+# ─── T-S19: chaining still fits/wraps with marker+bar present ───
+H19="$(mktemp -d)"
+cat > "$H19/marker.sh" << 'MARKER'
+#!/usr/bin/env bash
+stdin="$(cat)"
+[ -n "$stdin" ] || exit 1
+echo "PREVMARK"
+MARKER
+chmod +x "$H19/marker.sh"
+printf 'bash %s/marker.sh' "$H19" > "$H19/statusline-prev-cmd"
+shasum "$H19/statusline-prev-cmd" | awk '{print $1}' > "$H19/statusline-prev-cmd.sha"
+mkcache "$H19" api 12.3456 0.4321 0 0 57 3 0 0 "$(date +%s)"
+
+OUT=$(printf '{"session_id":"t"}' | AMIRAL_HOME="$H19" AMIRAL_PROFILE=ultra COLUMNS=200 NO_COLOR=1 bash "$RENDER")
+NLINES=$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')
+if [ "$NLINES" = "1" ] && echo "$OUT" | grep -qF 'PREVMARK' && echo "$OUT" | grep -qF '⚓ ultra ·' && echo "$OUT" | grep -qF '▰'; then
+  ok "T-S19a wide COLUMNS: PREVMARK + profile marker + coverage bar joined on one line"
+else
+  ko "T-S19a out=[$OUT] lines=$NLINES"
+fi
+
+OUT=$(printf '{"session_id":"t"}' | AMIRAL_HOME="$H19" AMIRAL_PROFILE=ultra COLUMNS=40 NO_COLOR=1 bash "$RENDER")
+NLINES=$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')
+L1=$(printf '%s\n' "$OUT" | head -1)
+L2=$(printf '%s\n' "$OUT" | head -2 | tail -1)
+if [ "$NLINES" = "2" ] && [ "$L1" = "PREVMARK" ] && echo "$L2" | grep -qF '⚓ ultra'; then
+  ok "T-S19b narrow COLUMNS: two rows (PREVMARK, then marker+segment)"
+else
+  ko "T-S19b out=[$OUT]"
+fi
+
+# ─── T-S20 (review fix): hostile count values in the cache never paint a
+# lying bar. BWK awk's -v strnum rule makes `m>0` a STRING comparison for
+# non-numeric m ("corrupt" > "0" is true), which rendered 1 filled cell for
+# zero real coverage; a negative count cancels the denominator into a false
+# 5/5. Both are now a CORRUPT cache: whole segment silent (§1.8), marker
+# still allowed (session identity, not cache data). ───
+H20="$(mktemp -d)"
+{
+  printf 'v\t1\ngenerated_epoch\t%s\n' "$(date +%s)"
+  printf 'mode\tapi\nnet_total\t1.0\nnet_today\t1.0\nprem_avoided_total\t0\nprem_avoided_today\t0\n'
+  printf 'measured\tcorrupt\nunmeasured\t0\npending\t5\nesc_today\t0\n'
+} > "$H20/butin-cache.tsv"
+OUT=$(printf '{}' | AMIRAL_HOME="$H20" NO_COLOR=1 bash "$RENDER"); RC=$?
+if [ -z "$OUT" ] && [ "$RC" = "0" ]; then
+  ok "T-S20a non-numeric measured -> corrupt cache, silent (no ▰▱▱▱▱ fabrication)"
+else
+  ko "T-S20a rc=$RC out=[$OUT]"
+fi
+{
+  printf 'v\t1\ngenerated_epoch\t%s\n' "$(date +%s)"
+  printf 'mode\tapi\nnet_total\t1.0\nnet_today\t1.0\nprem_avoided_total\t0\nprem_avoided_today\t0\n'
+  printf 'measured\t10\nunmeasured\t0\npending\t-5\nesc_today\t0\n'
+} > "$H20/butin-cache.tsv"
+OUT=$(printf '{}' | AMIRAL_HOME="$H20" NO_COLOR=1 bash "$RENDER"); RC=$?
+if [ -z "$OUT" ] && [ "$RC" = "0" ]; then
+  ok "T-S20b negative pending -> corrupt cache, silent (no false-full ▰▰▰▰▰ bar)"
+else
+  ko "T-S20b rc=$RC out=[$OUT]"
+fi
+OUT=$(printf '{}' | AMIRAL_HOME="$H20" AMIRAL_PROFILE=amiral NO_COLOR=1 bash "$RENDER"); RC=$?
+if [ "$OUT" = "⚓ amiral" ] && [ "$RC" = "0" ]; then
+  ok "T-S20c corrupt counts + profile -> marker alone (identity survives, data doesn't)"
+else
+  ko "T-S20c rc=$RC out=[$OUT]"
 fi
 
 echo ""; echo "  $PASS passed, $FAIL failed"
