@@ -21,11 +21,21 @@ MUST, what is roadmap, and what is refused.
 - **`verified` in the schema**: the verify gate drops a session marker;
   the collector consumes it (fresh < 5 min). Report shows verified k/N.
 - **Journal de bord** (`amiral-journal`): per-repo opt-in git hook →
-  trailers `Amiral-Route`, `Amiral-Verified`, `Amiral-Attest`
-  (sha256 of verify.sh + staged diff — recomputable, forging it means
-  running the real gate). Cost trailer is a separate opt-in with a
-  public-remote warning. `FLEET.md` = AI-policy-as-code, read by the
-  policy when present, changed by PR.
+  trailers `Amiral-Route` and `Amiral-Diff-Digest` (sha256 of verify.sh
+  bytes + the commit's diff — a recomputable digest of what was
+  *present* at commit time, not proof that verify.sh *ran*; on amend it
+  folds in the committed diff too, so a message-only amend never
+  degenerates to a hash of nothing). `Amiral-Route` is scoped to the
+  committing repo (matched by recorded `cwd`, not a git-verified fact);
+  events without a `cwd` (pre-v0.12, bash-collector v1) are excluded —
+  never guessed. Residual: the window is still the last 50 lines of the
+  *global* log, filtered here, so this-repo routes older than that
+  window won't appear. There is no `Amiral-Verified` trailer: nothing in
+  this codebase produces a real, gate-backed session marker yet, so
+  claiming "verified" would be forgeable by a bare `touch` — removed
+  rather than shipped fake. Cost trailer (`Amiral-Net-Saved`) is a
+  separate opt-in with a public-remote warning. `FLEET.md` =
+  AI-policy-as-code, read by the policy when present, changed by PR.
 - **Pavillon thresholds**: no badge under 20 measured tasks; coverage
   always printed. The design encodes honesty, non-negotiable.
 

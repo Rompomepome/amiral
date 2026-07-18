@@ -113,9 +113,23 @@ jobs:
       - name: Statusline battery
         run: bash tests/test-statusline.sh
 
+      - name: Journal battery
+        run: bash tests/test-journal.sh
+
       - name: No dangerous flags shipped
         run: |
           ! grep -R -- "--dangerously-skip-permissions" shell/ install.sh agents/ skills/
+
+      - name: No dead provenance trailers in user-facing docs
+        # v0.14.0 removed Amiral-Verified (forgeable) and renamed
+        # Amiral-Attest -> Amiral-Diff-Digest. The README advertising a
+        # trailer the code no longer emits is itself a false provenance
+        # claim (corsaire, v0.14.0) — fail CI if docs re-diverge.
+        # READMEs only: docs/butin-spec-v2.md legitimately states the
+        # NEGATIVE ("there is no Amiral-Verified trailer") — that honest
+        # mention must not trip the guard.
+        run: |
+          ! grep -n "Amiral-Verified\|Amiral-Attest" README.md README.fr.md
 
   # BSD userland coverage: every stat -c || stat -f and date -d || date -j
   # chain only exercises its GNU branch on ubuntu. macOS runs the BSD side
@@ -128,3 +142,5 @@ jobs:
         run: bash tests/test-butin.sh
       - name: Statusline battery (BSD userland)
         run: bash tests/test-statusline.sh
+      - name: Journal battery (BSD userland)
+        run: bash tests/test-journal.sh

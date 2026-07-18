@@ -127,9 +127,9 @@ ships. Board only what you need; read any of them in five minutes.
   detection — changes apply to future events only, history keeps the
   baseline it was priced with. Wire the collector once: [docs/butin.md](docs/butin.md).
 - **journal de bord** (prove) — `amiral-journal enable`: opt-in git
-  trailers per repo — `Amiral-Route`, `Amiral-Verified`, and
-  `Amiral-Attest` (a sha256 of verify.sh + the staged diff, recomputable
-  by anyone; forging it means running the real gate). Squash-merge
+  trailers per repo — `Amiral-Route` and `Amiral-Diff-Digest` (a
+  recomputable digest of verify.sh's bytes + the commit's diff — proves
+  what was present, not what was run). Squash-merge
   team? `amiral-journal note` attaches the same proof as a git note.
   `FLEET.md` makes the routing policy part of the repo itself —
   AI-policy-as-code, changed by PR ([template](templates/FLEET.md)).
@@ -296,12 +296,11 @@ removable anytime):
 
 ```
 Amiral-Route: implementer=claude-sonnet-4-6 grunt=claude-haiku-4-5
-Amiral-Verified: green (verify.sh)
-Amiral-Attest: sha256:8dca5e258291f50c
+Amiral-Diff-Digest: sha256:8dca5e258291f50c
 ```
 
-The attest hash is sha256(verify.sh + staged diff) — anyone can
-recompute it; forging it means actually running the gate. Squash-merge
+The digest is a recomputable hash of verify.sh's bytes + the commit's
+diff — it proves what was present, not what was run. Squash-merge
 teams: `amiral-journal note` attaches the same block as a git note
 (ref `amiral`), which survives history rewrites. Cost trailer is a
 separate opt-in (`enable --with-cost`) with a public-remote warning.

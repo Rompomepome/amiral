@@ -1,5 +1,135 @@
 # Changelog
 
+## v0.14.0 - 2026-07-18
+**Receipt-by-discovery (the butin was blind to workers), mixed-model
+pricing, an evidence-gated diagnostic, and journal wave 2 — stop
+claiming, don't fake proving.**
+- **CRITICAL fix: worker receipts are now produced by DISCOVERY, because
+  SubagentStop does not fire for Task agents on this platform build.**
+  Investigated live (2026-07-18, Claude Code 2.1.214): 9 real subagent
+  transcripts on disk, 0 receipts for them — a controlled synchronous-
+  agent experiment wrote its transcript instantly and receipts.jsonl
+  did not move. The only SubagentStop events observed came from
+  internal/ephemeral agents whose `agent_transcript_path` is minted but
+  NEVER written (20/20 historical orphan receipts + 2/2 live: session
+  dirs still alive holding 6–13 other real transcripts, the named file
+  never existed — the earlier "platform GC'd them" explanation was
+  wrong). The Stop hook, which does fire every turn, now scans the
+  session's `subagents/` dir and mints receipts for real transcripts:
+  ts = transcript mtime (actual completion time), identity from the
+  `.meta.json` sidecar as before, dedup by transcript path against both
+  receipts and events (events now carry `"transcript"` — additive,
+  readers ignore unknown keys). The SubagentStop path is kept as a
+  fallback that dedup absorbs if a future build revives it. Validated
+  against this session's own data: 8 workers measured on the first
+  pass, 3 streaming ones honestly pending, 1 honestly unmeasurable
+  (re-validated after review fixes: 12 workers, +$102.90 net surfaced).
+  `BUTIN_RECEIPT_TTL_HOURS` default drops 48 → 6 and the expiry reason
+  becomes "transcript absent (never written or removed)" — the flush
+  race is minutes, and the old wording claimed the file once existed,
+  which the evidence refuted. ports/BUTIN.md platform findings
+  rewritten accordingly.
+- **Fix: mixed-model transcripts priced at ONE model's rate**
+  (AUDIT-FABLE C2, resurrected on the brain path): measure.py kept a
+  single `model` variable overwritten per line, so a mid-session
+  `/model` switch (opus → fable) billed EVERY deduped turn at the final
+  model's rate. Turns are now grouped BY MODEL and ONE EVENT PER MODEL
+  is written — each schema-pure (`chosen_model` prices exactly the
+  tokens attributed to it, counterfactual at baseline over the same
+  slice), core.awk unchanged (no second accounting implementation).
+  Coverage counts priced slices; single-model receipts are unchanged.
+  ALL-OR-NOTHING: any unpriced model in the mix makes the whole receipt
+  ONE unmeasurable event (pricing only the known slice would undercount
+  — an invented "measured" figure). Brain dedup supersedes the whole
+  per-session event SET now, not a single event.
+- **Fix: the report's tier diagnostic lied twice** (AUDIT-FABLE M8
+  class): "brain and hands are on the same tier" printed in two
+  wordings (a rewrite forgot to remove the original), and its trigger
+  (zero grunt tasks + net ≈ 0) fired on ONE measured brain event with
+  2 workers pending — a specific conclusion from near-zero data, and
+  factually wrong on the live log. The no-data trigger is gone; the
+  single remaining diagnostic (core.awk's DEGENERATE flag) prints only
+  with ≥3 measured worker events AND pending under 25% of total.
+  Silence beats a wrong diagnosis.
+- **Journal wave 2 (AUDIT-FABLE H2/H3/H4) — stop claiming:**
+  - H2: `Amiral-Verified` REMOVED — nothing ever produced its marker,
+    and the consumer matched any session's marker via a global glob, so
+    a bare `touch` forged "green" in a repo with no verify.sh. A real
+    gate-backed producer can come later; a forgeable claim cannot ship.
+  - H3: `Amiral-Attest` renamed **`Amiral-Diff-Digest`** — it is a
+    recomputable digest of verify.sh's bytes + the commit's diff:
+    proves what was PRESENT, not what was RUN. Amend (`--no-edit`/
+    editor path) now folds in the committed diff (`git show $3`), so a
+    message-only amend no longer degenerates to the hash of nothing;
+    if the diff is empty AND verify.sh absent, the trailer is omitted
+    entirely. Known residual, documented: `--amend -m` reaches the hook
+    as source "message" (a git limitation) and keeps the staged-diff
+    digest — it can miss content, never fabricate.
+  - H4: `Amiral-Route` scoped to THIS repo — events are filtered by
+    their recorded `cwd` (repo root or under it) before extraction;
+    cwd-less events (pre-v0.12) are excluded, never guessed. Residual
+    documented: the window is still the last 50 lines of the global
+    log, filtered; scoping is by recorded cwd, not a git-verified fact.
+    Also fixed: the extraction grep required adjacent no-space keys and
+    silently missed every measure.py (json.dumps) event.
+  - Found while implementing: the hook could ABORT a commit (a trailing
+    conditional's false exit became the hook's exit status) — explicit
+    exit 0; plus a bash 3.2 case-in-command-substitution parser trap.
+- **Corsaire pre-mortem fixes (journal, post-implementation):**
+  - README.md still advertised `Amiral-Verified`/`Amiral-Attest` — the
+    pitch document showing a trailer the code no longer emits is itself
+    a false provenance claim. Updated to the real trailers; CI now
+    greps READMEs for the dead names (the spec's honest negative
+    mention is exempt).
+  - Route values are echoed into the commit message from an
+    unauthenticated local file: a crafted `chosen_model` could smuggle
+    a fake first-position `Amiral-Diff-Digest:` line past naive greps.
+    Both fields are now sanitized to `[A-Za-z0-9._-]` — inert token
+    characters only, never message structure.
+  - `git worktree`: `.git` is a file there, the hook write failed to
+    stderr yet `enable` printed the success banner — a silent false
+    claim of protection. `hook_path()` now resolves the REAL hooks dir
+    via `git rev-parse --git-path hooks` (journal genuinely works from
+    worktrees now), and `enable` verifies the hook landed before
+    claiming success.
+  - One oversized butin.jsonl line (50MB) made every `git commit` take
+    16s via the per-line route loop: input is now byte-capped
+    (200KB) + per-line capped (8KB) — a pathological log degrades to
+    fewer routes, never a stalled commit.
+  - Documented, not changed: cwd casing mismatches on case-insensitive
+    filesystems can under-report (never over-report) a route; an
+    unreadable verify.sh contributes zero digest bytes exactly like an
+    absent one.
+- **Final-review fixes (fresh context, post-implementation):**
+  - Double-billing seam: the plain SubagentStop branch had no dedup —
+    if the platform ever re-fires for a discovered transcript, the same
+    work was billed twice. Now two layers: the hook refuses a worker
+    receipt whose transcript is already receipted/measured, and
+    measure.py skips (and counts, `dup_receipts`) any duplicate worker
+    receipt. Brain receipts exempt — same-transcript resupersede is
+    their normal flow.
+  - The discovery scan grepped both logs PER FILE, every turn
+    (O(dir×logs): 200 files ≈ 2.2s per turn, growing) — now one
+    known-paths extraction per turn, membership checked against the
+    small list (~2.3x now, gap widens with backlog).
+  - Future transcript mtime (clock skew) made the stable-gate hold a
+    receipt pending FOREVER (negative age < STABLE always): mint-side
+    ts clamp to now, gate holds only 0 ≤ age < STABLE, TTL age clamps
+    negative to 0.
+  - Filenames containing quotes/backslashes/control chars would mint
+    invalid-JSON receipts that measure.py then silently DROPPED on
+    rewrite (permanent invisible loss + a duplicate-key field-override
+    primitive): hostile names are now skipped at mint (never a corrupt
+    line), and unparseable receipt lines are preserved verbatim, never
+    destroyed.
+  - Diagnostic gate: slice-inflation documented (a mixed-model worker
+    task counts one event per model — rare, accepted); coverage label
+    reworded to "N/M measured" (slices, not tasks); journal's
+    `grep -v unmeasured` never matched `"unmeasurable"` — fixed.
+- New `tests/test-journal.sh` battery (16 checks incl. smuggle/
+  worktree/big-line/README-drift), wired into CI (ubuntu + macOS).
+  Batteries: butin 28 → 53, statusline 71 unchanged.
+
 ## v0.13.2 - 2026-07-18
 **Statusline: the anchor becomes the profile flag + a strict-semantics
 spinner.**

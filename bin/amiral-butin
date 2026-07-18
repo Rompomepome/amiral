@@ -571,18 +571,42 @@ COVNOTE=""
 [ "${PEND:-0}" != "0" ] && COVNOTE=" · ${PEND} pending"
 [ "${UNMEAS:-0}" != "0" ] && COVNOTE="$COVNOTE · ${UNMEAS} unmeasurable (never invented)"
 [ "${DUP:-0}" != "0" ] && COVNOTE="$COVNOTE · ${DUP} duplicate(s) ignored"
-echo "  ${DIM}Coverage: ${MEAS:-0}/$TOTAL tasks measured${COVNOTE}${RST}"
+echo "  ${DIM}Coverage: ${MEAS:-0}/$TOTAL measured${COVNOTE}${RST}"
 UML=$(echo "$REPORT" | awk -F'\t' '/^UMODEL/{printf "%s (%s) ",$2,$3}')
 [ -n "$UML" ] && echo "  ${COPPER}unmeasured models: ${UML}— price them: amiral-butin add-model <id> <in_\$/Mtok> <out_\$/Mtok>${RST}"
 [ -n "$VER" ] && [ "$VER" != "0/0" ] && echo "  ${DIM}Verified through the gate: $VER measured tasks${RST}"
 [ -n "$CHEAP" ] && echo "  ${DIM}Cheap-route success: $CHEAP${RST}"
-if [ -z "$CHEAP" ] && awk -v n="${NET:-0}" 'BEGIN{exit !(n<0.01 && n>-0.01)}'; then
-  echo "  ${DIM}Your brain and hands are on the same tier: the butin measures cost,${RST}"
-  echo "  ${DIM}not quality. Savings appear when routing crosses tiers (grunt→Haiku,${RST}"
-  echo "  ${DIM}or an Opus/Fable brain). amiral's value here is discipline + the gate.${RST}"
-fi
+# v0.14.0 (AUDIT-FABLE M8 — a specific conclusion from near-zero data): this
+# used to fire TWICE. One trigger was "no grunt tasks + net~=0", which is
+# NOT evidence of tier identity — it's evidence of NO DATA (fires on a log
+# holding a single measured brain event with workers still pending). That
+# trigger is gone. The other is core.awk's DEGENERATE flag, which at least
+# inspects actual chosen_model vs baseline — kept as the ONLY trigger, but
+# gated on real evidence before printing: >=3 measured WORKER events (brain
+# never appears in AGENTS_START..AGENTS_END, so summing that block's Tasks
+# column counts workers only) AND pending under 25% of total (materially
+# incomplete coverage can't support a tier-identity conclusion either).
+# Silence beats a wrong diagnosis.
 DEGEN=$(echo "$REPORT" | awk -F'\t' '/^DEGENERATE/{print $2}')
-[ "$DEGEN" = "1" ] && echo "  ${DIM}All tiers identical (brain = hands = baseline): the butin measures cost, not quality. Savings appear when routing crosses tiers (grunt→haiku, or an opus/fable brain).${RST}"
+if [ "$DEGEN" = "1" ]; then
+  # F5 (documented, not redesigned): WORKERS below counts EVENTS, not
+  # distinct tasks. A mixed-model worker receipt (v0.14 slice pricing)
+  # writes ONE EVENT PER MODEL for the SAME receipt, so the >=3 threshold
+  # can be met by fewer distinct tasks than the number suggests (e.g. 2
+  # tasks x 2 models each = 4 slices). Requires a worker switching models
+  # mid-task — rare. Brain is excluded from this sum either way (it never
+  # appears in AGENTS_START..AGENTS_END). Accepted: slice-inflation only
+  # ever makes this gate MORE permissive, never fabricates the diagnostic
+  # from zero data (the failure mode the gate exists to prevent).
+  WORKERS=$(echo "$REPORT" | awk -F'\t' '
+    /^AGENTS_START/{p=1;next} /^AGENTS_END/{p=0;next} p{sum+=$2} END{print sum+0}')
+  if [ "${WORKERS:-0}" -ge 3 ] && [ $((PEND * 4)) -lt "$TOTAL" ]; then
+    echo "  ${DIM}All tiers identical (brain = hands = baseline): the butin measures${RST}"
+    echo "  ${DIM}cost, not quality. Savings appear when routing crosses tiers${RST}"
+    echo "  ${DIM}(grunt→Haiku, or an Opus/Fable brain). amiral's value here is${RST}"
+    echo "  ${DIM}discipline + the gate.${RST}"
+  fi
+fi
 echo "  ${DIM}Share a row → amiral-report · estimate scenarios → amiral-savings${RST}"
 if [ "${1:-}" = "--detail" ]; then
   echo ""
