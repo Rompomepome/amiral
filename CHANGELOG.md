@@ -1,5 +1,58 @@
 # Changelog
 
+## v0.13.2 - 2026-07-18
+**Statusline: the anchor becomes the profile flag + a strict-semantics
+spinner.**
+- **The ⚓ anchor now leads the segment ONLY when an amiral profile
+  launched the session.** Real-world check found the v0.13.1 marker
+  correct but not evident: both a profiled and a bare `claude` session
+  opened with ⚓, the profile name grey among grey. Now the glance IS
+  the signal: anchor present = launched via a profile (exactly what the
+  sanitized `AMIRAL_PROFILE` var proves — no wider claim), anchor
+  absent = bare session whose butin numbers still render, unflagged.
+  A text-level distinction also survives `NO_COLOR`, where any
+  color-only cue dies. The profile token itself is now bold cyan
+  (`\033[1;36m`) — weight plus a hue that carries no good/bad meaning
+  (green/amber stay reserved for today's sign).
+- **New: pending spinner with strict semantics** — a braille glyph
+  (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏) next to the pending count, its frame derived from the
+  cache's `generated_epoch` (frame = epoch % 10). It appears ONLY while
+  `pending > 0`, and since the epoch only changes when the producer
+  writes a new snapshot, the frame advances exactly when a NEW
+  measurement pass lands while work is in flight — motion means "fresh
+  data", never a decorative loop (same epoch = same frame on every
+  re-render; proven by test). `pending == 0` with real coverage shows a
+  static ⠿ ("settled" — deliberately not in the frame set); no data at
+  all shows nothing. Garbage `generated_epoch` degrades to frame 0,
+  never a crash. True per-second animation would need
+  `"refreshInterval"` in settings.json — documented in docs/butin.md,
+  deliberately not wired (our data only changes on task events).
+- Amber-on-negative-day, the mute rule (a negative day is never
+  hidden), corrupt-cache silence, chaining, the trust pin and the 2s
+  watchdog: all unchanged.
+- **Fresh-context review fixes (post-implementation):**
+  - A huge ALL-DIGIT `generated_epoch` (19+ digits) passed the spinner's
+    digits check but overflowed awk's C-double integer precision: `%d`
+    of the modulo could land outside 0-9 (observed `-32` on macOS
+    onetrueawk) and the armless case table silently dropped the glyph
+    while `pending > 0` — motion gone, exactly the invariant violation.
+    Epochs are length-capped (>10 digits — corrupt until year 2286 —
+    degrade to frame 0, glyph still shown: its PRESENCE means pending,
+    only its MOTION needs a trustworthy epoch), and the case table
+    gained a default arm that fails toward frame 0, never toward
+    disappearance.
+  - The battery asserted SGR PRESENCE in three tests without
+    neutralizing an ambient `NO_COLOR` (a growing shell convention) —
+    the renderer was right, the harness fragile. `unset NO_COLOR` at
+    the top, next to the existing `unset AMIRAL_PROFILE` hermeticity.
+  - Plan mode showed the spinner without the pending count that
+    explains it (api-mode asymmetry): plan's coverage parens now carry
+    `· N pending` too — motion is never an unexplained animation.
+- Battery: statusline 57 → 71 (anchor semantics incl. no-⚓-without-
+  profile, bold-cyan SGR presence, spinner frame determinism/motion/
+  settled/garbage-epoch/corrupt-cache cases, huge-epoch no-vanish,
+  plan-mode pending parity).
+
 ## v0.13.1 - 2026-07-18
 **Receipt TTL (pending is never forever) + statusline profile marker +
 coverage bar.**

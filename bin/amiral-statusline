@@ -148,9 +148,13 @@ if [ -f "$CACHE" ]; then
     if [ "$MUTED" = "0" ]; then
       # colors (respect NO_COLOR): from TODAY's sign, both modes.
       if [ -n "${NO_COLOR:-}" ]; then
-        GREEN=""; AMBER=""; DIMC=""; RST=""
+        GREEN=""; AMBER=""; DIMC=""; CYANB=""; RST=""
       else
-        GREEN=$'\033[32m'; AMBER=$'\033[33m'; DIMC=$'\033[2m'; RST=$'\033[0m'
+        GREEN=$'\033[32m'; AMBER=$'\033[33m'; DIMC=$'\033[2m'
+        # v0.13.2: the profile token's color — BOLD (not dim) + a hue
+        # (cyan) that carries no good/bad meaning, so it never competes
+        # with green/amber, which stay reserved for today's sign.
+        CYANB=$'\033[1;36m'; RST=$'\033[0m'
       fi
       # Clamp sub-cent noise: a -$0.003 rounding residual must not render as
       # an amber "loss" for a magnitude the 2dp display shows as $0.00. A
@@ -209,12 +213,85 @@ if [ -f "$CACHE" ]; then
         }'
       }
 
-      # HEAD: the profile marker, when present, sits right after the anchor
-      # ("⚓ ultra · ..."); with no profile, output is unchanged ("⚓ ...").
+      # SPINNER (v0.13.2): a live-work indicator, computed here so both
+      # modes below can slot it in identically, always inside this
+      # CORRUPT-gated block (T-S20 extends naturally: a corrupt cache
+      # renders no glyph, spinner included). PENDING>0 draws one of 10
+      # moving braille frames; PENDING==0 with data present draws the
+      # static ⠿ (deliberately NOT a member of the frame set — an
+      # unambiguous "settled, nothing in flight"); total==0 draws nothing
+      # (a spinner over no data would be motion for nothing).
+      # MOTION SEMANTIC: the frame index is generated_epoch % 10, and that
+      # epoch only changes when cache.sh (the producer) writes a NEW
+      # snapshot — so the glyph only advances when a fresh measurement/
+      # receipt pass lands while work is still pending. This is not a
+      # wall-clock animation: render the SAME cache twice, any time apart,
+      # and the frame is byte-identical both times; only a new snapshot
+      # moves it.
+      spin_glyph() {
+        # Route the arithmetic through awk, this file's idiom for
+        # anything numeric (see covbar/humanize/signed_dollar above):
+        # m/p/u are digits-only-or-absent by the CORRUPT gate upstream,
+        # but a raw bash `$(( ))` on a leading-zero value ("008") would
+        # still be parsed as octal and could error straight to stderr —
+        # forbidden here. awk's string-to-number conversion has no such
+        # octal ambiguity. Final glyph selection is still a plain `case`
+        # table below (never `${FRAMES:i:1}`: under LC_ALL=C bash slices
+        # BYTES and every braille glyph here is 3 UTF-8 bytes, so a
+        # byte-slice would print a garbage third of a glyph).
+        _sidx="$(awk -v m="$1" -v p="$2" -v u="$3" -v ge="$4" 'BEGIN{
+          m=m+0; p=p+0; u=u+0
+          if (m+p+u<=0) { print "none"; exit }
+          if (p>0) {
+            # length cap, not just digits: awk holds numbers as C doubles,
+            # so an all-digit epoch past ~18 digits loses integer precision
+            # and `%d` of the modulo can land OUTSIDE 0-9 (observed: -32 on
+            # macOS onetrueawk) — the case table below would then silently
+            # drop the glyph while pending>0. Real epochs are 10 digits
+            # until 2286; anything longer is a corrupt value whose frame is
+            # underivable -> frame 0, glyph still shown (its PRESENCE means
+            # pending>0; only its MOTION needs a trustworthy epoch).
+            # length() over a brace interval: BWK awk has no {n,m} support.
+            if (ge !~ /^[0-9]+$/ || length(ge) > 10) ge=0
+            printf "%d", (ge+0) % 10
+          } else print "settled"
+        }')"
+        case "$_sidx" in
+          ""|none) return ;;   # empty = awk itself failed: claim nothing
+          settled) printf '⠿' ;;
+          0) printf '⠋' ;;
+          1) printf '⠙' ;;
+          2) printf '⠹' ;;
+          3) printf '⠸' ;;
+          4) printf '⠼' ;;
+          5) printf '⠴' ;;
+          6) printf '⠦' ;;
+          7) printf '⠧' ;;
+          8) printf '⠇' ;;
+          9) printf '⠏' ;;
+          # Default: only reachable from the p>0 printf branch emitting an
+          # out-of-range index (a numeric edge the length cap should already
+          # prevent) — pending IS >0 there, so a frame-0 glyph is honest;
+          # silent disappearance while work is in flight would not be.
+          *) printf '⠋' ;;
+        esac
+      }
+      SPIN="$(spin_glyph "${MEASURED:-0}" "${PENDING:-0}" "${UNMEASURED:-0}" "${GEN_EPOCH:-}")"
+
+      # HEAD / ANCHOR SEMANTICS (v0.13.2): ⚓ now means, specifically, "an
+      # amiral profile launched this session" — nothing more. It is a
+      # TEXT-level signal (glyph presence/absence), not a color, because a
+      # color-only distinction dies under NO_COLOR while text survives it.
+      # That claim is exactly what the sanitized AMIRAL_PROFILE var above
+      # proves — no more. butin still measures a bare `claude` session the
+      # same way; its numbers just render unflagged, with no anchor and no
+      # profile token. So the anchor leads the segment ONLY when PROFILE
+      # is non-empty; otherwise HEAD is empty and the line opens directly
+      # on the money/plan figures.
       if [ -n "$PROFILE" ]; then
         HEAD="⚓ ${PROFILE} · "
       else
-        HEAD="⚓ "
+        HEAD=""
       fi
 
       if [ "${MODE:-api}" = "plan" ]; then
@@ -222,6 +299,10 @@ if [ -f "$CACHE" ]; then
         PT="$(humanize "${PREM_TODAY:-0}")"; PA="$(humanize "${PREM_TOTAL:-0}")"
         BAR="$(covbar "${MEASURED:-0}" "${PENDING:-0}" "${UNMEASURED:-0}")"
         MEASPART="${MEASURED:-0} meas"
+        # pending count shown here too (parity with api mode): the spinner's
+        # motion must never appear without the number that explains it.
+        [ "${PENDING:-0}" != "0" ] && MEASPART="${MEASPART} · ${PENDING} pending"
+        [ -n "$SPIN" ] && MEASPART="${MEASPART} ${SPIN}"
         [ -n "$BAR" ] && MEASPART="${MEASPART} ${BAR}"
         BODY="${HEAD}${PT} prem tok avoided today · ${PA} total (${MEASPART})"
       else
@@ -235,6 +316,7 @@ if [ -f "$CACHE" ]; then
         COVPART=" (${MEASURED:-0} meas"
         [ "${UNMEASURED:-0}" != "0" ] && COVPART="${COVPART} · ${UNMEASURED} unmeas"
         [ "${PENDING:-0}" != "0" ] && COVPART="${COVPART} · ${PENDING} pending"
+        [ -n "$SPIN" ] && COVPART="${COVPART} ${SPIN}"
         BAR="$(covbar "${MEASURED:-0}" "${PENDING:-0}" "${UNMEASURED:-0}")"
         [ -n "$BAR" ] && COVPART="${COVPART} ${BAR}"
         COVPART="${COVPART})"
@@ -265,11 +347,13 @@ if [ -f "$CACHE" ]; then
       STALE_COLORED=""
       [ -n "$STALE_TEXT" ] && STALE_COLORED=" ${DIMC}· stale${RST}"
       if [ -n "$PROFILE" ]; then
-        # Profile token is dim-colored on its own, never the sign color
-        # (green/amber) the rest of the line takes from today's net — it is
-        # session identity, not good/bad news.
+        # Profile token is BOLD CYAN on its own (v0.13.2: was dim) — bold
+        # weight for visual presence, a hue that carries no good/bad
+        # meaning so it never competes with the sign color (green/amber)
+        # the rest of the line takes from today's net. The anchor itself
+        # keeps that sign color here, exactly as before.
         BODY_TAIL="${BODY#"${HEAD}"}"
-        SEG="${COL}⚓ ${RST}${DIMC}${PROFILE}${RST}${COL} · ${BODY_TAIL}${RST}${STALE_COLORED}"
+        SEG="${COL}⚓ ${RST}${CYANB}${PROFILE}${RST}${COL} · ${BODY_TAIL}${RST}${STALE_COLORED}"
       else
         SEG="${COL}${BODY}${RST}${STALE_COLORED}"
       fi
@@ -279,16 +363,20 @@ fi
 
 # Marker-alone fallback: a valid profile with NO money segment (no cache
 # file, corrupt cache, or a muted positive day — all three leave SEG empty
-# above) still renders the anchor + profile alone, dim. The marker is
-# session identity, not good news: mute suppresses money, never identity.
+# above) still renders the anchor + profile alone, bold cyan (v0.13.2: was
+# dim). The marker is session identity, not good news: mute suppresses
+# money, never identity.
 # Self-contained NO_COLOR handling — the block above may never have run
-# (cache missing/corrupt), so DIMC/RST are not guaranteed to be set here.
+# (cache missing/corrupt), so CYANB/RST are not guaranteed to be set here.
 if [ -z "$SEG" ] && [ -n "$PROFILE" ]; then
   PLAIN="⚓ ${PROFILE}"
   if [ -n "${NO_COLOR:-}" ]; then
     SEG="$PLAIN"
   else
-    SEG="$(printf '\033[2m⚓ %s\033[0m' "$PROFILE")"
+    # bold cyan, matching the full-segment profile token; the anchor may
+    # share the cyan here since there is no sign color (no money segment)
+    # for it to carry instead.
+    SEG="$(printf '\033[1;36m⚓ %s\033[0m' "$PROFILE")"
   fi
 fi
 

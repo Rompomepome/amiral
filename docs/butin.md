@@ -61,9 +61,12 @@ Opt-in, ambient line in Claude Code's own status bar — the same numbers as
 `amiral-butin`'s report, computed once per task event and cached, so
 rendering it costs nothing on every turn.
 
-- **API mode**: `⚓ +$0.43 today · +$12.35 net (57 meas · 3 unmeas ▰▰▰▰▱)`
-- **Plan mode** (mirrors `butin-config.json`'s `mode`): `⚓ 2.3k prem tok
-  avoided today · 123k total (57 meas ▰▰▰▰▱)` — premium tokens avoided is
+- **API mode**: `+$0.43 today · +$12.35 net (57 meas · 3 unmeas ⠿ ▰▰▰▰▱)`
+  — no anchor: a bare `claude` session, not launched via an amiral profile.
+- **API mode, launched via an amiral profile**: `⚓ ultra · +$0.43 today ·
+  +$12.35 net (57 meas · 3 unmeas ⠿ ▰▰▰▰▱)`.
+- **Plan mode** (mirrors `butin-config.json`'s `mode`): `2.3k prem tok
+  avoided today · 123k total (57 meas ⠿ ▰▰▰▰▱)` — premium tokens avoided is
   the hero, never a dollar figure, same rule as the report (spec §5bis).
 - **Amber = a net-negative day, and it is NEVER hidden.** Green when
   today's net is positive, dim when zero/no tasks yet, amber with an
@@ -85,24 +88,63 @@ otherwise, but never 0 filled cells when at least one event was measured
 the dollar/premium-tokens totals — a savings figure has no natural
 maximum, so any "scale" drawn for it would be a made-up number.
 
+### Spinner
+
+Right before the bar, in the same parenthesis, right after the coverage
+counts: a small glyph answering "is anything still in flight, and did it
+just move?" — `2 pending ⠼ ▰▰▰▱▱` while `pending>0`, or a static `⠿`
+(deliberately outside the 10-frame braille set — an unambiguous "settled,
+nothing in flight") once pending drops to 0 with real coverage present.
+No glyph at all when there's no coverage data yet (`measured=unmeasured=
+pending=0`) — motion over nothing would be a lie. Applies to both API and
+plan mode's coverage parenthesis.
+
+The frame shown is `generated_epoch % 10`, and `generated_epoch` is the
+cache producer's own timestamp — it only changes when `cache.sh` writes a
+**new** snapshot. So the spinner advances only when a fresh measurement
+or receipt pass actually lands while work is still pending; it is **not**
+a wall-clock animation. Render the same cache twice, a millisecond or a
+minute apart, and you get the byte-identical frame both times.
+
+If you want true per-second (or per-N-second) motion independent of task
+events, that's a `settings.json` knob, not something the renderer invents
+on its own: add `"refreshInterval": N` (seconds — Claude Code's own
+statusline polling option) next to `.statusLine` and Claude Code will
+re-invoke the renderer on a timer regardless of whether new data landed.
+Off by default here, and not wired by `install` — our data only changes
+on task events anyway, so a fast timer would mostly just re-print the
+same frame between events. That's your call to make, not ours.
+
 ### Profile marker
 
-If the session was launched via one of the `amiral`/`amiral-solo`/
-`amiral-advisor`/`amiral-fine`/`amiral-ultra`/`matelot` shell functions, its
-name appears right after the anchor: `⚓ ultra · +$0.43 today · ...` (dim,
-regardless of the line's green/amber sign — it's identity, not news). With
-no money segment to show (fresh install, corrupt cache, muted positive
-day) the marker still renders alone: `⚓ ultra`. Mute only ever hides GOOD
-money news, never the marker, and never a net-negative day.
+**The anchor (`⚓`) itself is the claim, as of v0.13.2.** It's a
+text-level signal, not a color, because a color-only distinction dies
+under `NO_COLOR` while text survives it: the glyph leads the segment
+*only* when this session was launched via one of the `amiral`/
+`amiral-solo`/`amiral-advisor`/`amiral-fine`/`amiral-ultra`/`matelot`
+shell functions, and the profile's name follows right after it: `⚓ ultra
+· +$0.43 today · +$12.35 net (57 meas · 3 unmeas ⠿ ▰▰▰▰▱)` (bold cyan
+token — bold for visual weight, a hue that carries no good/bad meaning so
+it never competes with the line's green/amber sign, which the anchor
+itself still carries, exactly as before).
+
+A bare `claude` session shows the identical numbers with **no anchor at
+all**: `+$0.43 today · +$12.35 net (57 meas · 3 unmeas ⠿ ▰▰▰▰▱)` — butin
+still measures it the same way; it's simply unflagged. With no money
+segment to show (fresh install, corrupt cache, muted positive day) a
+valid profile still renders the marker alone: `⚓ ultra` (bold cyan).
+Mute only ever hides GOOD money news, never the marker, and never a
+net-negative day.
 
 **Be precise about what the marker does and doesn't mean.** The ⚓
 statusline itself is wired through Claude Code's *global* `statusLine`
 setting — every session on the machine renders it, launched by amiral's
 functions or not. The routing **policy** in `shell/amiral-profiles.sh` is
 also global (`~/.claude/CLAUDE.md` imports it), so it governs every
-session regardless of marker. The marker means only: *this session's
-`claude` process was launched by `<profile>`*. A bare `claude` shows no
-marker but still runs under the same global policy.
+session regardless of marker. The marker — and, since v0.13.2, the anchor
+that now carries it — means only: *this session's `claude` process was
+launched by `<profile>`*. A bare `claude` shows no marker, and now no
+anchor either, but still runs under the same global policy.
 
 Why not read `AMIRAL_BRAIN`/`AMIRAL_HANDS` instead of a dedicated var?
 Verified live: those are `export`ed by `_amiral_load_prefs`, so once one

@@ -12,6 +12,10 @@ set -uo pipefail
 # an inherited value here would poison every other EXACT-match test in the
 # file (they never set it, and expect the no-marker line).
 unset AMIRAL_PROFILE 2>/dev/null || true
+# Same hermeticity for NO_COLOR: three tests assert SGR PRESENCE (T-S2a,
+# T-S11b, T-S21c); an ambient NO_COLOR=1 (a growing shell convention) would
+# fail them falsely — the renderer would be right and the harness wrong.
+unset NO_COLOR 2>/dev/null || true
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 PASS=0; FAIL=0
 ok(){ echo "  ok  $1"; PASS=$((PASS+1)); }
@@ -47,10 +51,13 @@ mkcache() {
 }
 
 # ─── T-S1: api render, exact string ───
+# v0.13.2: no AMIRAL_PROFILE set here -> no anchor at all (the anchor now
+# claims "launched via an amiral profile", which this fixture cannot make).
+# pending=0 + real coverage -> static settled glyph ⠿ before the bar.
 H1="$(mktemp -d)"
 mkcache "$H1" api 12.3456 0.4321 0 0 57 3 0 0 "$(date +%s)"
 OUT=$(printf '{}' | AMIRAL_HOME="$H1" NO_COLOR=1 bash "$RENDER"); RC=$?
-EXPECT='⚓ +$0.43 today · +$12.35 net (57 meas · 3 unmeas ▰▰▰▰▱)'
+EXPECT='+$0.43 today · +$12.35 net (57 meas · 3 unmeas ⠿ ▰▰▰▰▱)'
 if [ "$RC" = "0" ] && [ "$OUT" = "$EXPECT" ]; then
   ok "T-S1 api render exact match"
 else
@@ -232,9 +239,11 @@ printf 'bash %s/marker.sh' "$H7" > "$H7/statusline-prev-cmd"
 shasum "$H7/statusline-prev-cmd" | awk '{print $1}' > "$H7/statusline-prev-cmd.sha"
 mkcache "$H7" api 12.3456 0.4321 0 0 57 3 0 0 "$(date +%s)"
 
+# v0.13.2: no AMIRAL_PROFILE here -> no anchor claim to make, so assert the
+# segment by a stable token ('meas') instead of '⚓'.
 OUT=$(printf '{"session_id":"t"}' | AMIRAL_HOME="$H7" COLUMNS=200 NO_COLOR=1 bash "$RENDER")
 NLINES=$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')
-if [ "$NLINES" = "1" ] && echo "$OUT" | grep -qF 'PREVMARK' && echo "$OUT" | grep -qF '⚓' && echo "$OUT" | grep -qF ' · '; then
+if [ "$NLINES" = "1" ] && echo "$OUT" | grep -qF 'PREVMARK' && echo "$OUT" | grep -qF 'meas' && echo "$OUT" | grep -qF ' · '; then
   ok "T-S7a wide COLUMNS: PREVMARK + segment joined on one line"
 else
   ko "T-S7a out=[$OUT] lines=$NLINES"
@@ -244,7 +253,7 @@ OUT=$(printf '{"session_id":"t"}' | AMIRAL_HOME="$H7" COLUMNS=40 NO_COLOR=1 bash
 NLINES=$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')
 L1=$(printf '%s\n' "$OUT" | head -1)
 L2=$(printf '%s\n' "$OUT" | head -2 | tail -1)
-if [ "$NLINES" = "2" ] && [ "$L1" = "PREVMARK" ] && echo "$L2" | grep -qF '⚓'; then
+if [ "$NLINES" = "2" ] && [ "$L1" = "PREVMARK" ] && echo "$L2" | grep -qF 'meas'; then
   ok "T-S7b narrow COLUMNS: two rows (PREVMARK, then the segment)"
 else
   ko "T-S7b out=[$OUT]"
@@ -268,7 +277,7 @@ OUT=$(printf '{}' | AMIRAL_HOME="$H8" NO_COLOR=1 bash "$RENDER"); RC=$?
 T1=$(date +%s)
 chmod 644 "$H8/butin.jsonl"
 DELTA=$(( T1 - T0 ))
-EXPECT8='⚓ +$0.43 today · +$12.35 net (57 meas · 3 unmeas ▰▰▰▰▱)'
+EXPECT8='+$0.43 today · +$12.35 net (57 meas · 3 unmeas ⠿ ▰▰▰▰▱)'
 # generous CI bound (second resolution, portable); nominal target is <100ms.
 if [ "$RC" = "0" ] && [ "$OUT" = "$EXPECT8" ] && [ "$DELTA" -le 1 ]; then
   ok "T-S8 never opens butin.jsonl (chmod 000 survived), rc0, correct line, delta=${DELTA}s"
@@ -347,7 +356,7 @@ H10="$(mktemp -d)"
   printf 'unmeasured\t3\n'
 } > "$H10/butin-cache.tsv"
 OUT=$(printf '{}' | AMIRAL_HOME="$H10" NO_COLOR=1 bash "$RENDER"); RC=$?
-EXPECT10='⚓ -$0.12 today (1 escalation) · +$12.35 net (57 meas · 3 unmeas ▰▰▰▰▱)'
+EXPECT10='-$0.12 today (1 escalation) · +$12.35 net (57 meas · 3 unmeas ⠿ ▰▰▰▰▱)'
 if [ "$RC" = "0" ] && [ "$OUT" = "$EXPECT10" ]; then
   ok "T-S10a sparse+shuffled cache renders exactly (key-matched, not positional)"
 else
@@ -416,7 +425,7 @@ PWN13="$H13/pwned"
 # (a) no .sha pin at all -> skipped
 printf 'touch %q; echo INJECTED' "$PWN13" > "$H13/statusline-prev-cmd"
 OUT=$(printf '{}' | AMIRAL_HOME="$H13" NO_COLOR=1 bash "$RENDER")
-if [ ! -e "$PWN13" ] && ! printf '%s' "$OUT" | grep -qF 'INJECTED' && printf '%s' "$OUT" | grep -qF '⚓'; then
+if [ ! -e "$PWN13" ] && ! printf '%s' "$OUT" | grep -qF 'INJECTED' && printf '%s' "$OUT" | grep -qF 'meas'; then
   ok "T-S13a un-pinned prev-cmd not executed (our segment still renders)"
 else
   ko "T-S13a executed=[$([ -e "$PWN13" ] && echo yes)] out=[$OUT]"
@@ -461,7 +470,7 @@ OUT=$(printf '{}' | AMIRAL_HOME="$H15" NO_COLOR=1 COLUMNS=200 bash "$RENDER"); R
 T1=$(date +%s)
 DELTA=$(( T1 - T0 ))
 # 2s cap + slack; our segment must still render even though the chain timed out.
-if [ "$RC" = "0" ] && [ "$DELTA" -le 4 ] && printf '%s' "$OUT" | grep -qF '⚓'; then
+if [ "$RC" = "0" ] && [ "$DELTA" -le 4 ] && printf '%s' "$OUT" | grep -qF 'meas'; then
   ok "T-S15 hung prev-cmd capped (${DELTA}s), our segment still renders"
 else
   ko "T-S15 rc=$RC delta=${DELTA}s out=[$OUT]"
@@ -470,10 +479,11 @@ fi
 # ─── T-S16: profile marker sanitization (v0.13.1 PART 2/3) ───
 H16="$(mktemp -d)"
 mkcache "$H16" api 12.3456 0.4321 0 0 57 3 0 0 "$(date +%s)"
-EXPECT_NOMARK='⚓ +$0.43 today · +$12.35 net (57 meas · 3 unmeas ▰▰▰▰▱)'
+# v0.13.2: no profile -> no anchor at all; pending=0 + coverage -> ⠿.
+EXPECT_NOMARK='+$0.43 today · +$12.35 net (57 meas · 3 unmeas ⠿ ▰▰▰▰▱)'
 
 OUT=$(printf '{}' | AMIRAL_HOME="$H16" AMIRAL_PROFILE=ultra NO_COLOR=1 bash "$RENDER")
-if [ "$OUT" = "⚓ ultra · +\$0.43 today · +\$12.35 net (57 meas · 3 unmeas ▰▰▰▰▱)" ]; then
+if [ "$OUT" = "⚓ ultra · +\$0.43 today · +\$12.35 net (57 meas · 3 unmeas ⠿ ▰▰▰▰▱)" ]; then
   ok "T-S16a valid profile: marker sits right after the anchor"
 else
   ko "T-S16a out=[$OUT]"
@@ -652,6 +662,161 @@ if [ "$OUT" = "⚓ amiral" ] && [ "$RC" = "0" ]; then
   ok "T-S20c corrupt counts + profile -> marker alone (identity survives, data doesn't)"
 else
   ko "T-S20c rc=$RC out=[$OUT]"
+fi
+
+# ─── T-S21: anchor semantics (v0.13.2) — the anchor itself is now the
+# claim ("launched via an amiral profile"). No profile -> no ⚓ anywhere
+# (the claim would be false); a valid profile -> the anchor leads the
+# segment, bold cyan when colored; marker-alone stays exact under
+# NO_COLOR. ───
+H21="$(mktemp -d)"
+mkcache "$H21" api 12.3456 0.4321 0 0 57 3 0 0 "$(date +%s)"
+
+OUT=$(printf '{}' | AMIRAL_HOME="$H21" NO_COLOR=1 bash "$RENDER")
+if ! printf '%s' "$OUT" | grep -qF '⚓'; then
+  ok "T-S21a no profile: NO anchor anywhere in the output"
+else
+  ko "T-S21a out=[$OUT]"
+fi
+
+OUT=$(printf '{}' | AMIRAL_HOME="$H21" AMIRAL_PROFILE=ultra NO_COLOR=1 bash "$RENDER")
+case "$OUT" in
+  "⚓ ultra ·"*) ok "T-S21b valid profile: line starts with the anchor + marker" ;;
+  *) ko "T-S21b out=[$OUT]" ;;
+esac
+
+OUT=$(printf '{}' | AMIRAL_HOME="$H21" AMIRAL_PROFILE=ultra bash "$RENDER")
+if printf '%s' "$OUT" | grep -qF $'\033[1;36m'; then
+  ok "T-S21c colored run with profile: output contains bold-cyan (\\033[1;36m)"
+else
+  ko "T-S21c out=[$OUT]"
+fi
+
+H21B="$(mktemp -d)"
+OUT=$(printf '{}' | AMIRAL_HOME="$H21B" AMIRAL_PROFILE=solo NO_COLOR=1 bash "$RENDER")
+if [ "$OUT" = "⚓ solo" ]; then
+  ok "T-S21d marker-alone (no cache) still exact under NO_COLOR"
+else
+  ko "T-S21d out=[$OUT]"
+fi
+
+# ─── T-S22: spinner semantics (v0.13.2) — motion means "a NEW cache
+# snapshot landed while work was pending", never a wall-clock animation;
+# static ⠿ means settled; total==0 means no glyph at all. `frame_for` is
+# an INDEPENDENT re-implementation of the expected mapping (not sourced
+# from the renderer), so this is a real assertion, not a tautology. ───
+frame_for() {
+  case $(( $1 % 10 )) in
+    0) printf '⠋' ;; 1) printf '⠙' ;; 2) printf '⠹' ;; 3) printf '⠸' ;;
+    4) printf '⠼' ;; 5) printf '⠴' ;; 6) printf '⠦' ;; 7) printf '⠧' ;;
+    8) printf '⠇' ;; 9) printf '⠏' ;;
+  esac
+}
+
+H22="$(mktemp -d)"
+E22=$(date +%s)
+mkcache "$H22" api 1.0 1.0 0 0 5 0 2 0 "$E22"
+FRAME22="$(frame_for "$E22")"
+OUT=$(printf '{}' | AMIRAL_HOME="$H22" NO_COLOR=1 bash "$RENDER")
+if echo "$OUT" | grep -qF "2 pending ${FRAME22}"; then
+  ok "T-S22a pending>0: frame for epoch $E22 (${FRAME22}) sits right after '2 pending'"
+else
+  ko "T-S22a out=[$OUT] want frame=[$FRAME22]"
+fi
+
+E22B=$(( E22 + 1 ))
+mkcache "$H22" api 1.0 1.0 0 0 5 0 2 0 "$E22B"
+FRAME22B="$(frame_for "$E22B")"
+OUT2=$(printf '{}' | AMIRAL_HOME="$H22" NO_COLOR=1 bash "$RENDER")
+if echo "$OUT2" | grep -qF "2 pending ${FRAME22B}" && [ "$FRAME22B" != "$FRAME22" ]; then
+  ok "T-S22b new snapshot (epoch+1) -> different frame (motion == new snapshot, not wall clock)"
+else
+  ko "T-S22b out=[$OUT2] frame=[$FRAME22B] prev=[$FRAME22]"
+fi
+
+OUT3=$(printf '{}' | AMIRAL_HOME="$H22" NO_COLOR=1 bash "$RENDER")
+if [ "$OUT3" = "$OUT2" ]; then
+  ok "T-S22c same cache rendered twice -> byte-identical frame both times (no wall-clock animation)"
+else
+  ko "T-S22c out=[$OUT3] vs [$OUT2]"
+fi
+
+mkcache "$H22" api 1.0 1.0 0 0 5 0 0 0 "$(date +%s)"
+OUT4=$(printf '{}' | AMIRAL_HOME="$H22" NO_COLOR=1 bash "$RENDER")
+if echo "$OUT4" | grep -qF '⠿' \
+   && ! echo "$OUT4" | grep -qF -e '⠋' -e '⠙' -e '⠹' -e '⠸' -e '⠼' -e '⠴' -e '⠦' -e '⠧' -e '⠇' -e '⠏'; then
+  ok "T-S22d pending=0, total>0: static ⠿ present, no motion-frame chars"
+else
+  ko "T-S22d out=[$OUT4]"
+fi
+
+mkcache "$H22" api 0 0 0 0 0 0 0 0 "$(date +%s)"
+OUT5=$(printf '{}' | AMIRAL_HOME="$H22" NO_COLOR=1 bash "$RENDER")
+if ! echo "$OUT5" | grep -qF '⠿' \
+   && ! echo "$OUT5" | grep -qF -e '⠋' -e '⠙' -e '⠹' -e '⠸' -e '⠼' -e '⠴' -e '⠦' -e '⠧' -e '⠇' -e '⠏' \
+   && ! echo "$OUT5" | grep -qF '▰' && ! echo "$OUT5" | grep -qF '▱'; then
+  ok "T-S22e meas=unmeas=pending=0: no spinner glyph, no bar at all"
+else
+  ko "T-S22e out=[$OUT5]"
+fi
+
+mkcache "$H22" api 1.0 1.0 0 0 5 0 2 0 "garbage"
+OUT6=$(printf '{}' | AMIRAL_HOME="$H22" NO_COLOR=1 bash "$RENDER"); RC6=$?
+ERR6=$(printf '{}' | AMIRAL_HOME="$H22" NO_COLOR=1 bash "$RENDER" 2>&1 >/dev/null)
+if echo "$OUT6" | grep -qF '2 pending ⠋' && [ "$RC6" = "0" ] && [ -z "$ERR6" ]; then
+  ok "T-S22f garbage generated_epoch + pending>0: frame ⠋ (index 0), rc0, no stderr"
+else
+  ko "T-S22f rc=$RC6 out=[$OUT6] stderr=[$ERR6]"
+fi
+
+H22G="$(mktemp -d)"
+{
+  printf 'v\t1\ngenerated_epoch\t%s\n' "$(date +%s)"
+  printf 'mode\tapi\nnet_total\t1.0\nnet_today\t1.0\nprem_avoided_total\t0\nprem_avoided_today\t0\n'
+  printf 'measured\tcorrupt\nunmeasured\t0\npending\t2\nesc_today\t0\n'
+} > "$H22G/butin-cache.tsv"
+OUT7=$(printf '{}' | AMIRAL_HOME="$H22G" NO_COLOR=1 bash "$RENDER"); RC7=$?
+if [ -z "$OUT7" ] && [ "$RC7" = "0" ]; then
+  ok "T-S22g corrupt cache (non-numeric measured) + pending>0: still fully silent"
+else
+  ko "T-S22g rc=$RC7 out=[$OUT7]"
+fi
+
+# ─── T-S23 (review fix): spinner never silently vanishes while pending>0 ───
+# (a) A huge ALL-DIGIT generated_epoch (19 digits) passes a naive digits
+# check but overflows awk's C-double integer precision: `%d` of the modulo
+# can land outside 0-9 (observed -32 on macOS onetrueawk) and an armless
+# case table dropped the glyph entirely — motion gone while work in flight.
+# Length-capped epochs (>10 digits) now degrade to frame 0, glyph present.
+H23="$(mktemp -d)"
+{
+  printf 'v\t1\ngenerated_epoch\t1234567890123456789\n'
+  printf 'mode\tapi\nnet_total\t1.0\nnet_today\t1.0\nprem_avoided_total\t0\nprem_avoided_today\t0\n'
+  printf 'measured\t5\nunmeasured\t0\npending\t2\nesc_today\t0\n'
+} > "$H23/butin-cache.tsv"
+ERR23="$(mktemp)"
+OUT=$(printf '{}' | AMIRAL_HOME="$H23" NO_COLOR=1 bash "$RENDER" 2>"$ERR23"); RC=$?
+if [ "$RC" = "0" ] && [ ! -s "$ERR23" ] && echo "$OUT" | grep -qF '2 pending ⠋'; then
+  ok "T-S23a 19-digit epoch: spinner present as frame 0 (no silent vanish), rc0, no stderr"
+else
+  ko "T-S23a rc=$RC out=[$OUT] err=[$(cat "$ERR23")]"
+fi
+OUT2=$(printf '{}' | AMIRAL_HOME="$H23" NO_COLOR=1 bash "$RENDER" 2>/dev/null)
+if [ "$OUT" = "$OUT2" ]; then
+  ok "T-S23b huge epoch renders deterministically (same bytes twice)"
+else
+  ko "T-S23b first=[$OUT] second=[$OUT2]"
+fi
+rm -f "$ERR23"
+# (c) plan-mode parity: the spinner's motion must never appear without the
+# pending count that explains it — plan parens now carry "· N pending" too.
+H23C="$(mktemp -d)"
+mkcache "$H23C" plan 100.0 5.0 123456 2345 57 0 2 0 "1000000004"
+OUT=$(printf '{}' | AMIRAL_HOME="$H23C" NO_COLOR=1 bash "$RENDER")
+if echo "$OUT" | grep -qF '57 meas · 2 pending ⠼' && ! echo "$OUT" | grep -qF '$'; then
+  ok "T-S23c plan mode shows the pending count next to the spinner (frame epoch%10=4)"
+else
+  ko "T-S23c out=[$OUT]"
 fi
 
 echo ""; echo "  $PASS passed, $FAIL failed"
