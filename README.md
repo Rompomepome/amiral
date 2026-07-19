@@ -122,11 +122,19 @@ ships. Board only what you need; read any of them in five minutes.
   your own routed tasks. Coverage shown, escalations and brain premium
   deducted, cache priced as cache, 100% local. First run: `amiral-butin
   init` detects your baseline (and refuses to strawman a frontier one
-  without your confirmation). Wire the collector once: [docs/butin.md](docs/butin.md).
+  without your confirmation). Baseline or mode changed mid-session (new
+  plan, new default model)? `amiral-butin config` sets it directly, no
+  detection — changes apply to future events only, history keeps the
+  baseline it was priced with. Wire the collector once: [docs/butin.md](docs/butin.md).
+  The headline NET only ever credits agents amiral actually ships and
+  routes (`agents/*.md`); a subagent Claude Code spawns on its own (or
+  any custom agent you define) is measured too but shown on its own
+  clearly-labelled line, never mixed into the amiral figure. The brain
+  keeps its own premium accounting, separate from both.
 - **journal de bord** (prove) — `amiral-journal enable`: opt-in git
-  trailers per repo — `Amiral-Route`, `Amiral-Verified`, and
-  `Amiral-Attest` (a sha256 of verify.sh + the staged diff, recomputable
-  by anyone; forging it means running the real gate). Squash-merge
+  trailers per repo — `Amiral-Route` and `Amiral-Diff-Digest` (a
+  recomputable digest of verify.sh's bytes + the commit's diff — proves
+  what was present, not what was run). Squash-merge
   team? `amiral-journal note` attaches the same proof as a git note.
   `FLEET.md` makes the routing policy part of the repo itself —
   AI-policy-as-code, changed by PR ([template](templates/FLEET.md)).
@@ -293,12 +301,11 @@ removable anytime):
 
 ```
 Amiral-Route: implementer=claude-sonnet-4-6 grunt=claude-haiku-4-5
-Amiral-Verified: green (verify.sh)
-Amiral-Attest: sha256:8dca5e258291f50c
+Amiral-Diff-Digest: sha256:8dca5e258291f50c
 ```
 
-The attest hash is sha256(verify.sh + staged diff) — anyone can
-recompute it; forging it means actually running the gate. Squash-merge
+The digest is a recomputable hash of verify.sh's bytes + the commit's
+diff — it proves what was present, not what was run. Squash-merge
 teams: `amiral-journal note` attaches the same block as a git note
 (ref `amiral`), which survives history rewrites. Cost trailer is a
 separate opt-in (`enable --with-cost`) with a public-remote warning.

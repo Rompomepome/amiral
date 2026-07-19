@@ -1,5 +1,472 @@
 # Changelog
 
+## v0.14.0 - 2026-07-18
+**Receipt-by-discovery (the butin was blind to workers), mixed-model
+pricing, an evidence-gated diagnostic, and journal wave 2 — stop
+claiming, don't fake proving.**
+- **CRITICAL fix: worker receipts are now produced by DISCOVERY, because
+  SubagentStop does not fire for Task agents on this platform build.**
+  Investigated live (2026-07-18, Claude Code 2.1.214): 9 real subagent
+  transcripts on disk, 0 receipts for them — a controlled synchronous-
+  agent experiment wrote its transcript instantly and receipts.jsonl
+  did not move. The only SubagentStop events observed came from
+  internal/ephemeral agents whose `agent_transcript_path` is minted but
+  NEVER written (20/20 historical orphan receipts + 2/2 live: session
+  dirs still alive holding 6–13 other real transcripts, the named file
+  never existed — the earlier "platform GC'd them" explanation was
+  wrong). The Stop hook, which does fire every turn, now scans the
+  session's `subagents/` dir and mints receipts for real transcripts:
+  ts = transcript mtime (actual completion time), identity from the
+  `.meta.json` sidecar as before, dedup by transcript path against both
+  receipts and events (events now carry `"transcript"` — additive,
+  readers ignore unknown keys). The SubagentStop path is kept as a
+  fallback that dedup absorbs if a future build revives it. Validated
+  against this session's own data: 8 workers measured on the first
+  pass, 3 streaming ones honestly pending, 1 honestly unmeasurable
+  (re-validated after review fixes: 12 workers, +$102.90 net surfaced).
+  `BUTIN_RECEIPT_TTL_HOURS` default drops 48 → 6 and the expiry reason
+  becomes "transcript absent (never written or removed)" — the flush
+  race is minutes, and the old wording claimed the file once existed,
+  which the evidence refuted. ports/BUTIN.md platform findings
+  rewritten accordingly.
+- **Fix: mixed-model transcripts priced at ONE model's rate**
+  (AUDIT-FABLE C2, resurrected on the brain path): measure.py kept a
+  single `model` variable overwritten per line, so a mid-session
+  `/model` switch (opus → fable) billed EVERY deduped turn at the final
+  model's rate. Turns are now grouped BY MODEL and ONE EVENT PER MODEL
+  is written — each schema-pure (`chosen_model` prices exactly the
+  tokens attributed to it, counterfactual at baseline over the same
+  slice), core.awk unchanged (no second accounting implementation).
+  Coverage counts priced slices; single-model receipts are unchanged.
+  ALL-OR-NOTHING: any unpriced model in the mix makes the whole receipt
+  ONE unmeasurable event (pricing only the known slice would undercount
+  — an invented "measured" figure). Brain dedup supersedes the whole
+  per-session event SET now, not a single event.
+- **Fix: the report's tier diagnostic lied twice** (AUDIT-FABLE M8
+  class): "brain and hands are on the same tier" printed in two
+  wordings (a rewrite forgot to remove the original), and its trigger
+  (zero grunt tasks + net ≈ 0) fired on ONE measured brain event with
+  2 workers pending — a specific conclusion from near-zero data, and
+  factually wrong on the live log. The no-data trigger is gone; the
+  single remaining diagnostic (core.awk's DEGENERATE flag) prints only
+  with ≥3 measured worker events AND pending under 25% of total.
+  Silence beats a wrong diagnosis.
+- **Journal wave 2 (AUDIT-FABLE H2/H3/H4) — stop claiming:**
+  - H2: `Amiral-Verified` REMOVED — nothing ever produced its marker,
+    and the consumer matched any session's marker via a global glob, so
+    a bare `touch` forged "green" in a repo with no verify.sh. A real
+    gate-backed producer can come later; a forgeable claim cannot ship.
+  - H3: `Amiral-Attest` renamed **`Amiral-Diff-Digest`** — it is a
+    recomputable digest of verify.sh's bytes + the commit's diff:
+    proves what was PRESENT, not what was RUN. Amend (`--no-edit`/
+    editor path) now folds in the committed diff (`git show $3`), so a
+    message-only amend no longer degenerates to the hash of nothing;
+    if the diff is empty AND verify.sh absent, the trailer is omitted
+    entirely. Known residual, documented: `--amend -m` reaches the hook
+    as source "message" (a git limitation) and keeps the staged-diff
+    digest — it can miss content, never fabricate.
+  - H4: `Amiral-Route` scoped to THIS repo — events are filtered by
+    their recorded `cwd` (repo root or under it) before extraction;
+    cwd-less events (pre-v0.12) are excluded, never guessed. Residual
+    documented: the window is still the last 50 lines of the global
+    log, filtered; scoping is by recorded cwd, not a git-verified fact.
+    Also fixed: the extraction grep required adjacent no-space keys and
+    silently missed every measure.py (json.dumps) event.
+  - Found while implementing: the hook could ABORT a commit (a trailing
+    conditional's false exit became the hook's exit status) — explicit
+    exit 0; plus a bash 3.2 case-in-command-substitution parser trap.
+- **Corsaire pre-mortem fixes (journal, post-implementation):**
+  - README.md still advertised `Amiral-Verified`/`Amiral-Attest` — the
+    pitch document showing a trailer the code no longer emits is itself
+    a false provenance claim. Updated to the real trailers; CI now
+    greps READMEs for the dead names (the spec's honest negative
+    mention is exempt).
+  - Route values are echoed into the commit message from an
+    unauthenticated local file: a crafted `chosen_model` could smuggle
+    a fake first-position `Amiral-Diff-Digest:` line past naive greps.
+    Both fields are now sanitized to `[A-Za-z0-9._-]` — inert token
+    characters only, never message structure.
+  - `git worktree`: `.git` is a file there, the hook write failed to
+    stderr yet `enable` printed the success banner — a silent false
+    claim of protection. `hook_path()` now resolves the REAL hooks dir
+    via `git rev-parse --git-path hooks` (journal genuinely works from
+    worktrees now), and `enable` verifies the hook landed before
+    claiming success.
+  - One oversized butin.jsonl line (50MB) made every `git commit` take
+    16s via the per-line route loop: input is now byte-capped
+    (200KB) + per-line capped (8KB) — a pathological log degrades to
+    fewer routes, never a stalled commit.
+  - Documented, not changed: cwd casing mismatches on case-insensitive
+    filesystems can under-report (never over-report) a route; an
+    unreadable verify.sh contributes zero digest bytes exactly like an
+    absent one.
+- **Final-review fixes (fresh context, post-implementation):**
+  - Double-billing seam: the plain SubagentStop branch had no dedup —
+    if the platform ever re-fires for a discovered transcript, the same
+    work was billed twice. Now two layers: the hook refuses a worker
+    receipt whose transcript is already receipted/measured, and
+    measure.py skips (and counts, `dup_receipts`) any duplicate worker
+    receipt. Brain receipts exempt — same-transcript resupersede is
+    their normal flow.
+  - The discovery scan grepped both logs PER FILE, every turn
+    (O(dir×logs): 200 files ≈ 2.2s per turn, growing) — now one
+    known-paths extraction per turn, membership checked against the
+    small list (~2.3x now, gap widens with backlog).
+  - Future transcript mtime (clock skew) made the stable-gate hold a
+    receipt pending FOREVER (negative age < STABLE always): mint-side
+    ts clamp to now, gate holds only 0 ≤ age < STABLE, TTL age clamps
+    negative to 0.
+  - Filenames containing quotes/backslashes/control chars would mint
+    invalid-JSON receipts that measure.py then silently DROPPED on
+    rewrite (permanent invisible loss + a duplicate-key field-override
+    primitive): hostile names are now skipped at mint (never a corrupt
+    line), and unparseable receipt lines are preserved verbatim, never
+    destroyed.
+  - Diagnostic gate: slice-inflation documented (a mixed-model worker
+    task counts one event per model — rare, accepted); coverage label
+    reworded to "N/M measured" (slices, not tasks); journal's
+    `grep -v unmeasured` never matched `"unmeasurable"` — fixed.
+- New `tests/test-journal.sh` battery (16 checks incl. smuggle/
+  worktree/big-line/README-drift), wired into CI (ubuntu + macOS).
+  Batteries: butin 28 → 53, statusline 71 unchanged.
+
+## v0.13.2 - 2026-07-18
+**Statusline: the anchor becomes the profile flag + a strict-semantics
+spinner.**
+- **The ⚓ anchor now leads the segment ONLY when an amiral profile
+  launched the session.** Real-world check found the v0.13.1 marker
+  correct but not evident: both a profiled and a bare `claude` session
+  opened with ⚓, the profile name grey among grey. Now the glance IS
+  the signal: anchor present = launched via a profile (exactly what the
+  sanitized `AMIRAL_PROFILE` var proves — no wider claim), anchor
+  absent = bare session whose butin numbers still render, unflagged.
+  A text-level distinction also survives `NO_COLOR`, where any
+  color-only cue dies. The profile token itself is now bold cyan
+  (`\033[1;36m`) — weight plus a hue that carries no good/bad meaning
+  (green/amber stay reserved for today's sign).
+- **New: pending spinner with strict semantics** — a braille glyph
+  (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏) next to the pending count, its frame derived from the
+  cache's `generated_epoch` (frame = epoch % 10). It appears ONLY while
+  `pending > 0`, and since the epoch only changes when the producer
+  writes a new snapshot, the frame advances exactly when a NEW
+  measurement pass lands while work is in flight — motion means "fresh
+  data", never a decorative loop (same epoch = same frame on every
+  re-render; proven by test). `pending == 0` with real coverage shows a
+  static ⠿ ("settled" — deliberately not in the frame set); no data at
+  all shows nothing. Garbage `generated_epoch` degrades to frame 0,
+  never a crash. True per-second animation would need
+  `"refreshInterval"` in settings.json — documented in docs/butin.md,
+  deliberately not wired (our data only changes on task events).
+- Amber-on-negative-day, the mute rule (a negative day is never
+  hidden), corrupt-cache silence, chaining, the trust pin and the 2s
+  watchdog: all unchanged.
+- **Fresh-context review fixes (post-implementation):**
+  - A huge ALL-DIGIT `generated_epoch` (19+ digits) passed the spinner's
+    digits check but overflowed awk's C-double integer precision: `%d`
+    of the modulo could land outside 0-9 (observed `-32` on macOS
+    onetrueawk) and the armless case table silently dropped the glyph
+    while `pending > 0` — motion gone, exactly the invariant violation.
+    Epochs are length-capped (>10 digits — corrupt until year 2286 —
+    degrade to frame 0, glyph still shown: its PRESENCE means pending,
+    only its MOTION needs a trustworthy epoch), and the case table
+    gained a default arm that fails toward frame 0, never toward
+    disappearance.
+  - The battery asserted SGR PRESENCE in three tests without
+    neutralizing an ambient `NO_COLOR` (a growing shell convention) —
+    the renderer was right, the harness fragile. `unset NO_COLOR` at
+    the top, next to the existing `unset AMIRAL_PROFILE` hermeticity.
+  - Plan mode showed the spinner without the pending count that
+    explains it (api-mode asymmetry): plan's coverage parens now carry
+    `· N pending` too — motion is never an unexplained animation.
+- Battery: statusline 57 → 71 (anchor semantics incl. no-⚓-without-
+  profile, bold-cyan SGR presence, spinner frame determinism/motion/
+  settled/garbage-epoch/corrupt-cache cases, huge-epoch no-vanish,
+  plan-mode pending parity).
+
+## v0.13.1 - 2026-07-18
+**Receipt TTL (pending is never forever) + statusline profile marker +
+coverage bar.**
+- **Fix: receipts could stay "pending" forever** — Claude Code
+  garbage-collects subagent transcripts
+  (`~/.claude/projects/…/subagents/agent-*.jsonl`) after some days; 20
+  real receipts from Jul 13 pointed at transcripts that no longer exist
+  and could NEVER be measured, yet the coverage line advertised "20
+  pending" indefinitely — a soft false-completeness. Now a receipt whose
+  transcript is ABSENT past `BUTIN_RECEIPT_TTL_HOURS` (default 48, `0` =
+  expire immediately) becomes one `unmeasurable` event with reason
+  `"transcript no longer on disk"`, written exactly once (idempotent via
+  the existing receipt/done set) and drained from `receipts.jsonl`.
+  Absent-but-young stays pending (the async flush race is minutes, not
+  days); exists-but-unparseable stays pending (unchanged); an
+  unparseable receipt `ts` stays pending (never guess an age). Both
+  sides of the TTL boundary are tested.
+- **Platform findings documented in `ports/BUTIN.md`** (load-bearing for
+  ports): on this platform `agent_type` is NOT delivered in the
+  SubagentStop payload — `agent_hint` was empty on all 20 real receipts
+  observed; agent identity must come from the transcript's `.meta.json`
+  sidecar. And subagent transcripts are GC'd, hence the TTL above.
+- **New: statusline profile marker** — `⚓ ultra · +$0.43 today · …`
+  shows which profile launched THIS session (`amiral` / `solo` /
+  `advisor` / `fine` / `ultra` / `matelot`); marker alone (`⚓ solo`)
+  when there is no money segment; no marker at all for a bare `claude`
+  session. Signal is a dedicated `AMIRAL_PROFILE` variable set as a
+  per-invocation prefix on each profile function's `claude` command —
+  NOT inferred from `AMIRAL_BRAIN`/`AMIRAL_HANDS`, which were verified
+  live to leak from the sourced `amiral.env` exports into later bare
+  `claude` launches (a false "amiral on" is worse than no indicator).
+  The renderer sanitizes the value (untrusted env; `^[a-z][a-z-]{0,11}$`
+  or nothing). Honesty note, also in the docs: the routing POLICY is
+  global (imported into `~/.claude/CLAUDE.md`) and applies to every
+  session; only the PROFILE is per-session — the marker never claims
+  otherwise.
+- **New: coverage bar** — a 5-cell `▰▰▰▰▱` bar for COVERAGE ONLY
+  (measured / measured+pending+unmeasurable — a real denominator),
+  appended to the coverage parens in both api and plan modes, only when
+  total > 0. Honesty rounding: 5/5 cells only at exactly 100%, floor
+  otherwise, never 0 cells while measured > 0. Deliberately NO bar for
+  savings: no natural maximum exists, an invented scale would be a
+  fabricated number. Anchor-glyph "motion" derived from
+  `generated_epoch` was considered and SKIPPED (no natural frame set for
+  ⚓; movement risked reading as decoration, which the design forbids).
+  Amber-on-negative-day and the mute rule unchanged and still
+  unhideable.
+- **Fresh-context review fixes (post-implementation):**
+  - The coverage bar could paint a filled cell for ZERO real coverage:
+    BWK awk's `-v` strnum rule turns `m>0` into a STRING comparison for
+    a non-numeric `measured` value from a corrupted cache
+    (`"corrupt" > "0"` is true), and a negative count cancels the
+    denominator into a false-full bar. The renderer's CORRUPT gate now
+    requires digits-only `measured`/`unmeasured`/`pending`/`esc_today`
+    (they are counts by construction); a hostile cache goes silent
+    (§1.8 treat-as-absent) instead of rendering a fabricated bar —
+    the profile marker (session identity, not cache data) survives.
+  - An id-less receipt crossing the TTL raised an uncaught `KeyError`
+    (`r["id"]`), crashing the run before the atomic rewrite and wedging
+    EVERY receipt in the batch forever — invisibly, since cache.sh
+    swallows the exit code. Id-less receipts (un-dedupable, so no event
+    may ever be written for them) now stay pending, and the rest of the
+    batch processes normally.
+  - `BUTIN_RECEIPT_TTL_HOURS=nan` silently meant "never expire" (NaN
+    comparisons are all False); it now falls back to the documented 48.
+- Batteries: 21 → 28 (butin: TTL boundary both sides, idempotence, TTL=0
+  knob, unparseable-transcript regression guard, id-less no-crash,
+  NaN knob) and 38 → 57 (statusline: marker sanitization/injection,
+  marker-alone states, bar honesty rounding, chaining with marker+bar,
+  hermetic `AMIRAL_PROFILE` isolation, hostile count values).
+
+## v0.13.0 - 2026-07-15
+**Live config (part 1) + statusline (part 2) of the DESIGN-NOTES.md v0.13
+pass — the receipt (§3) is next.**
+- **New: `amiral-butin config`** — the direct escape hatch for when
+  `init`'s auto-detection is wrong or the situation changed mid-session
+  (new plan, new default model). `--baseline <pricing_id>` and `--mode
+  api|plan` set values directly, validated, no detection ceremony;
+  `--show` prints the current config, its resolved pricing row, and the
+  active pricing_version. Flags combine; no arguments behaves as
+  `--show`. Nothing is written on any validation failure — an unknown
+  pricing_id lists the known ones and points at `add-model`. The
+  collector re-reads `butin-config.json` per event, so a change is live
+  from the very next task — but it applies to FUTURE events only:
+  history keeps the baseline it was priced with, same rule as
+  `rebaseline`.
+- **Fix: `init`/`rebaseline` wrote the config with a bare `>` redirect**
+  (a reader mid-write could see a torn file). Now atomic: compose to
+  `butin-config.json.tmp.$$`, then `mv` onto the live file — same
+  pattern `config` uses. Both now also stamp `set_ts`.
+- **Fix: `amiral-butin --detail` crashed** — `line 181: PVER: unbound
+  variable` under `set -u` (the pricing version lives in `$PV`; `$PVER`
+  was never set). `--detail` is the designated honesty surface; it now
+  also states the future-only re-baseline rule explicitly.
+- **New: statusline** — an opt-in, ambient line in Claude Code's own
+  status bar, fed by a new O(1) cache (`~/.amiral/butin-cache.tsv`)
+  written atomically by a task-event producer (`lib/butin/cache.sh`)
+  that hangs off both adapters (the receipt hook and the legacy direct
+  collector) plus amiral-butin's own cold pass, so the cache stays in
+  sync no matter which path produced new data. The renderer
+  (`bin/amiral-statusline`, plus a `.ps1` shape shipped for Windows, not
+  auto-wired) never computes a number and never reads `butin.jsonl`'s
+  content: every figure comes from the same `core.awk` engine the report
+  uses, run twice (full log + a today-filtered slice) by the producer.
+  API mode: `⚓ +$0.43 today · +$12.35 net (57 meas · 3 unmeas)`. Plan
+  mode: `⚓ 2.3k prem tok avoided today · 123k total (57 meas)` — premium
+  tokens, never a dollar hero, on a subscription. A net-negative day is
+  amber and NEVER hidden; `amiral statusline mute` suppresses good news
+  only. `amiral statusline install` backs up `settings.json`, saves any
+  pre-existing statusLine verbatim, and chains it (same line when it
+  fits, the row above when it doesn't); `uninstall` restores exactly
+  what was displaced, or leaves a foreign statusLine untouched and says
+  so; `status`/`mute`/`unmute` round out the command.
+- **`measure.py` hardened for concurrent callers** — cold measurement can
+  now run from multiple hooks at once (receipt hook, collector,
+  amiral-butin's cold pass, the new statusline producer), so it takes
+  its own lock (a lock older than 600s is reclaimed once, never wedging
+  measurement forever) and rewrites `butin.jsonl`/`receipts.jsonl`
+  through a PID-unique temp file + `os.replace` instead of a bare
+  `open(path,"w")` — no more torn-read window for a concurrent core.awk
+  pass or report. New `BUTIN_STABLE_SECS` gate (0 by default — unchanged
+  behavior for existing callers): the statusline producer calls it with
+  60s, so a transcript still being flushed stays pending instead of
+  measuring low — the v0.11 lesson, applied to a new caller.
+- Doctor: the collector-wiring check now recognizes the receipt hook too
+  (`butin-collect` OR `butin-receipt`; receipt-only users previously got
+  a false "not wired" warning), and gains statusline checks (wired?,
+  project-scope shadow?, cache present/stale?).
+- CI: syntax-checks the new/changed scripts (`bin/amiral-statusline`,
+  `lib/butin/cache.sh`, `adapters/claude-code/butin-receipt.sh` — the
+  last was missing from the syntax check entirely), runs the new
+  `tests/test-statusline.sh` battery, and gains a **macOS job** running
+  both batteries — every `stat -c || stat -f` / `date -d || date -j`
+  chain previously exercised only its GNU branch in CI, while past
+  audits found real BSD breaks.
+- **Fresh-context review fixes (post-implementation):**
+  - The H8 supersede marker carried no `ts`, so the statusline's
+    today-slice kept the superseded attempt's phantom counterfactual
+    credit while dropping the marker that cancels it — an escalation day
+    rendered as a fabricated GREEN positive (`+$3.50 today` on a true
+    `-$1.50` day), and mute could then hide the negative day entirely.
+    Markers now carry `ts`; a marker whose target sits outside a slice
+    stays a no-op in `core.awk`.
+  - The report crashed (`syntax error` + `TOTAL: unbound variable`,
+    output truncated after the hero line) whenever `receipts.jsonl`
+    existed with zero pending entries — under `pipefail`, `grep -c`
+    prints `0` AND exits 1, so the `|| echo 0` fallback appended a
+    second `0` line. That state is routine now that the statusline
+    producer drains receipts continuously. Same latent bug fixed twice
+    in `amiral-doctor`.
+  - The report's own cold pass now uses the same 60s stable-gate as the
+    hook path — measured-once numbers are forever, so `amiral-butin`
+    must not race a still-flushing transcript either.
+  - Renderer parse is matched by KEY, never by position (an absent cache
+    key silently shifted every later field — wrong numbers on screen),
+    tolerates CRLF, normalizes IEEE negative zero (`+$-0.00`), clamps
+    sub-cent rounding noise so a `-$0.003` residual isn't shown as an
+    amber loss, and rejects `COLUMNS=0`.
+- **Adversarial pre-mortem fixes (corsaire):**
+  - **Integrity-pin the displaced statusline.** `statusline-prev.json` /
+    `statusline-prev-cmd` live in `~/.amiral` at the user's own perms,
+    outside the workspace-trust boundary Claude Code enforces on
+    `settings.json` — yet the renderer *executes* the saved command every
+    render and `uninstall` writes the saved object back into
+    `settings.json`. Anything running as the user (a prompt-injected
+    subagent with Bash, a poisoned dependency) could rewrite either and
+    turn "can write a file" into recurring native code execution that
+    outlives amiral. Both files are now written `0600`, hashed at install,
+    and re-verified before use: the renderer refuses to chain a
+    tampered/un-pinned/group-writable command, and `uninstall` refuses to
+    restore a poisoned object (removes the key and warns instead).
+    Tamper-*evident*, the same model `amiral-trust` uses for `verify.sh`.
+  - **Renderer caps a chained command at 2s in pure bash** — stock macOS
+    has no coreutils `timeout`, so a slow/hung previous statusline used to
+    block the render with no cap.
+  - `settings.json` symlink (dotfiles via stow/chezmoi) is written
+    *through* now, not silently replaced by a plain file; the backup is
+    taken only when an edit can actually happen (no false "nothing
+    changed"), `rm -f`'d before `cp` (no write-through a planted symlink),
+    and `chmod 600`.
+  - Producer no longer wedges forever on a non-directory at the lock path
+    (sync-tool artifact / planted symlink); `PENDING` excludes receipts
+    already measured in the log, so a crash between `measure.py`'s two
+    atomic renames can't display the same task as "1 meas · 1 pending".
+Battery: 21/21 butin + 38/38 statusline.
+
+
+## v0.12.2 - 2026-07-13
+- **The brain was triple-counted.** The Stop hook fires once per turn, and
+  every receipt points at the same growing main transcript — so a session
+  with N brain turns produced N near-identical brain events, inflating the
+  total. Cold measurement now keeps ONE brain event per session (a newer
+  measurement supersedes the older one); worker subagents, each with a
+  distinct transcript, are unaffected. Verified: 3 Stop receipts -> 1
+  brain event, idempotent on re-run.
+
+
+## v0.12.1 - 2026-07-13
+- **Coverage told a contradiction: "6/6 measured" while 2 tasks were
+  pending.** The total ignored pending receipts, so a full-coverage stamp
+  sat next to "2 awaiting measurement" — exactly the false-completeness
+  the design forbids. Coverage now counts pending in the denominator and
+  names them: "2/4 measured · 2 pending". Measured, pending, and
+  unmeasurable are all surfaced, honestly.
+
+
+## v0.12.0 - 2026-07-13
+**The butin is rebuilt on a correct foundation.** v0.11 measured inside
+the hook, while the transcript was still streaming. Two adversarial
+audits and a real session proved what that produced: the same
+`message.id` is written up to 6x, so summing every usage line
+over-counted by **6.7x** on a live transcript (739,146 vs 110,424 real
+output tokens). No amount of patching fixes measuring a file that is
+still being written.
+
+**New architecture — capture and measurement are separated:**
+- **The hook writes a receipt** (`butin-receipt.sh`): which agent, which
+  session, where its transcript will be. No parsing, no arithmetic,
+  nothing that can race.
+- **`amiral-butin` measures cold** (`lib/butin/measure.py`), on stable,
+  finished files:
+  - **Dedup by `message.id`** — a streaming turn appears many times; only
+    its last record holds the final totals. This kills the 6.7x.
+  - **Identity from the platform's own sidecar** (`.meta.json` →
+    `agentType`), so a worker is never a nameless "worker" fallback.
+    (Observed: the sidecar correctly said `corsaire` where the hook hint
+    said `grunt` — the sidecar wins.)
+  - **Pending, never invented** — a transcript not yet flushed keeps its
+    receipt pending and is measured on the next run. Coverage reports
+    measured / pending / unmeasurable, honestly.
+  - **Reproducible** — the same receipts and transcripts always yield the
+    same number; re-running is idempotent. Anyone can re-run the
+    measurement and check it. No hosted service can offer that.
+Six classes of bug (async race, streaming double-count, partial-file
+reads, phantom escalations, retroactive markers, false coverage) become
+structurally impossible rather than individually patched.
+
+**Wiring changed** — see docs/butin.md; the old collector hook is
+superseded. If you ran any earlier butin, archive `butin.jsonl`: its
+numbers are fabricated. The journal/attestation hardening (forgeable
+Verified, empty attest on --amend, cross-repo route leak) is still open —
+do not publish numbers or badges from it yet.
+
+
+## v0.11.0 - 2026-07-11
+**Correctness release. The butin in v0.9-v0.10.1 measured nothing real —
+this fixes that.** An adversarial audit (dogfooded: amiral auditing
+amiral) proved on a live machine that the collector read hook fields
+SubagentStop never delivers, so every event was misattributed. If you
+ran the collector before now, your butin.jsonl is fabricated — archive
+it and start fresh after installing this.
+
+Blockers fixed (each now covered by a test on REAL transcript fixtures,
+so a regression fails CI):
+- **C1 — the collector never measured a worker.** It read `subagent_type`
+  and `transcript_path`; SubagentStop delivers `agent_type` and
+  `agent_transcript_path` (the latter is the subagent's own transcript;
+  `transcript_path` is the *main session's*). Every event was logged as
+  agent `"worker"`, priced from the brain's tokens at the brain's model.
+  Now reads the correct fields; real agent names and models appear.
+- **C2 — model decoupled from tokens.** The model was grepped globally
+  with `tail -1`, independent of the usage line. Now taken from the same
+  assistant message that carries the tokens.
+- **H10 — only the last turn was billed.** A multi-turn subagent was
+  undercounted 40-60%. Now sums every usage block in the transcript.
+- **H8 — a failed cheap route booked a profit.** The wasted attempt kept
+  its counterfactual credit while only its cost was charged, flipping a
+  loss into a fabricated gain for every model pair. Now the failed
+  attempt is superseded (excluded from both sides); only its wasted real
+  cost is charged. A failed route is a measured loss.
+- **C3 — scientific notation parsed as its mantissa** (1.5e-2 → 1.5, a
+  100x error waiting for any Python/JS adapter). Parser now handles eE.
+- **C4 — a corrupt state file silently deleted the event.** Now the epoch
+  field is validated; a bad state file never loses data.
+- **C7 — a missing newline merged two events, and coverage still said
+  "complete."** The merged record is now counted as corrupted, so lost
+  data surfaces instead of being certified absent.
+Also: per-session state uses a PID-unique temp name (H7), double
+`pricing_version` removed (M9). Fixtures rewritten to the real Claude
+Code transcript schema. The journal/attestation hardening (H2/H3/H4/H9,
+forgeable Verified, cross-repo leak) lands next in v0.11.1 — until then,
+do not use `amiral-journal flag` or `--with-cost` to publish numbers.
+
+
 ## v0.10.1 - 2026-07-09
 Completion pass — everything decided in the three review passes is now
 either shipped or explicitly on the recorded roadmap (docs/butin-spec-v2.md):

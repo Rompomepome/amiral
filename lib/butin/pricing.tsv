@@ -2,6 +2,11 @@
 # pricing_version: 2026-07-10
 # format: pricing_id<TAB>in_usd_per_tok<TAB>out_usd_per_tok<TAB>cache_write<TAB>cache_read
 # multi-provider from day one; refreshable from LiteLLM but never required.
+# dated ids: the platform may report a model id with a trailing -YYYYMMDD
+# (e.g. claude-haiku-4-5-20251001). lib/butin/measure.py retries a pricing
+# MISS exactly once with that suffix stripped; if the undated id below still
+# isn't found, the task stays unmeasurable — never a guessed/neighbouring
+# rate. Only ids listed here (dated or not) are ever priced.
 claude-opus-4-8	0.000015	0.000075	0.00001875	0.0000015
 claude-fable-5	0.00001	0.00005	0.0000125	0.000001
 claude-sonnet-5	0.000003	0.000015	0.00000375	0.0000003

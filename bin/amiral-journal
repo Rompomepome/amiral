@@ -8,13 +8,40 @@ set -uo pipefail
 AMIRAL_HOME="${AMIRAL_HOME:-$HOME/.amiral}"
 LOG="$AMIRAL_HOME/butin.jsonl"
 CMD="${1:-status}"
+# repo checkout, for the AMIRAL_AGENTS manifest fallback below (dev/test
+# runs before install.sh has copied anything to $CLAUDE_CONFIG_DIR).
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 repo_root() { git rev-parse --show-toplevel 2>/dev/null; }
-hook_path() { echo "$(repo_root)/.git/hooks/prepare-commit-msg"; }
+# corsaire-3: resolve the REAL hooks dir via `git rev-parse --git-path hooks`
+# instead of hardcoding "$ROOT/.git/hooks". In a linked worktree, $ROOT/.git
+# is a FILE (a gitdir pointer), not a directory — hardcoding meant mkdir/cat/
+# chmod all failed to stderr while `enable` still printed its success banner
+# (a false claim of protection). --git-path resolves the actual (shared)
+# hooks dir git will use for hooks fired from inside a worktree, and also
+# respects a user's core.hooksPath override for free. Verified in both a
+# normal repo and a worktree (tests/test-journal.sh J-12) before shipping
+# this over the simpler "fail honestly" alternative.
+hook_path() {
+  local root gitpath
+  root=$(repo_root) || return 1
+  [ -z "$root" ] && return 1
+  gitpath=$(cd "$root" 2>/dev/null && git rev-parse --git-path hooks 2>/dev/null)
+  [ -z "$gitpath" ] && return 1
+  case "$gitpath" in
+    (/*) echo "$gitpath/prepare-commit-msg" ;;
+    (*) echo "$root/$gitpath/prepare-commit-msg" ;;
+  esac
+}
 
 attest_hash() {
-  # Deterministic, recomputable by anyone: sha256(verify.sh + staged diff).
-  # Forging it means actually running the same gate on the same diff.
+  # Amiral-Diff-Digest: sha256(verify.sh bytes + staged diff). Deterministic,
+  # recomputable by anyone. Honest framing (H3): this proves the bytes were
+  # PRESENT at commit time — it does NOT prove verify.sh ran. Also honest
+  # (corsaire, doc-only): `cat ./verify.sh 2>/dev/null` folds in zero bytes
+  # for BOTH an absent verify.sh and one that exists but is unreadable
+  # (permissions) — self-consistent, but the digest alone cannot tell you
+  # which of the two happened.
   { cat ./verify.sh 2>/dev/null; git diff --cached 2>/dev/null; } \
     | shasum -a 256 2>/dev/null | awk '{print substr($1,1,16)}'
 }
@@ -28,65 +55,193 @@ case "$CMD" in
       echo "⚠ public remote detected: Amiral-Net-Saved will be visible to everyone. Ctrl-C to abort, Enter to continue."
       read -r _ </dev/tty 2>/dev/null || true
     fi
-    mkdir -p "$ROOT/.git/hooks"
-    cat > "$(hook_path)" << HOOK
+    HOOK_FILE=$(hook_path)
+    if [ -z "$HOOK_FILE" ]; then
+      echo "journal NOT enabled — could not resolve the hooks directory for $ROOT."
+      exit 1
+    fi
+    mkdir -p "$(dirname "$HOOK_FILE")" 2>/dev/null
+    cat > "$HOOK_FILE" << HOOK
 #!/usr/bin/env bash
 # installed by amiral-journal (remove: amiral-journal disable)
 export LC_ALL=C
 MSG="\$1"
-grep -q "Amiral-Route:" "\$MSG" && exit 0
+SRC="\${2:-}"
+SHA="\${3:-}"
+# idempotence: any prior trailer means this message already went through the
+# hook (amend re-runs it on the same message file). ROUTES/DIGEST/Net-Saved
+# can each legitimately be empty on their own — checking all three keeps the
+# guard correct even when the first pass emitted only one of them; if a
+# commit legitimately emitted NONE (nothing to report), re-running finds
+# nothing to report again (or genuinely new info) — harmless either way.
+grep -qE "Amiral-Route:|Amiral-Diff-Digest:|Amiral-Net-Saved:" "\$MSG" && exit 0
 AMIRAL_HOME="\${AMIRAL_HOME:-\$HOME/.amiral}"
-ROUTES=\$(tail -50 "\$AMIRAL_HOME/butin.jsonl" 2>/dev/null \
-  | grep -v unmeasured | grep -oE '"agent":"[^"]*","chosen_model":"[^"]*"' \
-  | sed 's/"agent":"//;s/","chosen_model":"/=/;s/"//' | sort -u | paste -sd' ' -)
-VERIF="unknown"
-[ -n "\$(find "\$AMIRAL_HOME/state" -name 'verify-ok-*' -mmin -60 2>/dev/null | head -1)" ] && VERIF="green (verify.sh, fresh)"
-ATTEST=\$({ cat ./verify.sh 2>/dev/null; git diff --cached 2>/dev/null; } | shasum -a 256 2>/dev/null | awk '{print substr(\$1,1,16)}')
+ROOT=\$(git rev-parse --show-toplevel 2>/dev/null)
+# H4: routes scoped to THIS repo (recorded cwd == root, or under it); events
+# with NO cwd (pre-v0.12 events, bash-collector v1) are excluded — never
+# guessed. Residual, stated honestly: the window is still "last 50 lines of
+# the GLOBAL log, filtered here" — this-repo routes older than that window
+# won't appear. Scoping is by recorded cwd (the task's working directory at
+# measurement time), not a git-verified fact. Also doc-only (corsaire): the
+# comparison below is a raw string match — on a case-insensitive filesystem
+# a casing mismatch between recorded cwd and \$ROOT drops a legit route.
+# Under-report only, never over-report; accepted.
+ROUTES=""
+if [ -n "\$ROOT" ]; then
+  # corsaire-4: cap input BEFORE the loop — a pathological (e.g. 50MB,
+  # unterminated) line must degrade to fewer/absent routes, never stall
+  # every commit on the machine. Byte-cap first (a capped mid-line fragment
+  # just fails extraction below, harmlessly), then take the usual line
+  # window.
+  ROUTES=\$(tail -c 200000 "\$AMIRAL_HOME/butin.jsonl" 2>/dev/null | tail -50 | grep -v '"unmeasurable"' | while IFS= read -r EVLINE; do
+    [ "\${#EVLINE}" -gt 8000 ] && continue
+    CWD=\$(printf '%s\n' "\$EVLINE" | grep -oE '"cwd"[ ]*:[ ]*"[^"]*"' | sed 's/.*"\([^"]*\)"\$/\1/')
+    [ -z "\$CWD" ] && continue
+    case "\$CWD" in
+      ("\$ROOT"|"\$ROOT"/*) ;;
+      (*) continue ;;
+    esac
+    # corsaire-2: agent/chosen_model come from butin.jsonl, a plain
+    # user-writable file with no auth — sanitize to the safe set so a
+    # hostile value (e.g. one containing a newline-ish payload forging a
+    # fake trailer) can only ever contribute inert token characters to the
+    # commit message, never structure (newlines, colons, spaces beyond the
+    # "=" pair separator we add ourselves). A stripped-empty value drops
+    # that pair.
+    A=\$(printf '%s\n' "\$EVLINE" | grep -oE '"agent"[ ]*:[ ]*"[^"]*"' | sed 's/.*"\([^"]*\)"\$/\1/' | sed 's/[^A-Za-z0-9._-]//g')
+    M=\$(printf '%s\n' "\$EVLINE" | grep -oE '"chosen_model"[ ]*:[ ]*"[^"]*"' | sed 's/.*"\([^"]*\)"\$/\1/' | sed 's/[^A-Za-z0-9._-]//g')
+    [ -n "\$A" ] && [ -n "\$M" ] && echo "\$A=\$M"
+  done | sort -u | paste -sd' ' -)
+fi
+# H3: Amiral-Diff-Digest = sha256(verify.sh bytes + the commit's diff). Proves
+# the bytes were PRESENT at commit time, not that verify.sh RAN. On amend
+# (\$2=commit) the staged diff alone can be empty, so we also fold in the
+# COMMITTED diff (git show \$3): message-only amend still carries real
+# content instead of degenerating to a hash of nothing.
+DIGEST=""
+if [ "\$SRC" = "commit" ] && [ -n "\$SHA" ]; then
+  DIFFLEN=\$({ git show --format= "\$SHA" 2>/dev/null; git diff --cached 2>/dev/null; } | wc -c | tr -d ' ')
+else
+  DIFFLEN=\$(git diff --cached 2>/dev/null | wc -c | tr -d ' ')
+fi
+# doc-only (corsaire): absent verify.sh and unreadable verify.sh both fold in
+# zero bytes here (2>/dev/null) — self-consistent, but the digest cannot tell
+# the two apart.
+HAVE_VERIFY=0; [ -f ./verify.sh ] && HAVE_VERIFY=1
+# never emit a digest of provably-empty input (hash-of-nothing is not proof)
+if [ "\$DIFFLEN" != "0" ] || [ "\$HAVE_VERIFY" = "1" ]; then
+  if [ "\$SRC" = "commit" ] && [ -n "\$SHA" ]; then
+    DIGEST=\$({ cat ./verify.sh 2>/dev/null; git show --format= "\$SHA" 2>/dev/null; git diff --cached 2>/dev/null; } | shasum -a 256 2>/dev/null | awk '{print substr(\$1,1,16)}')
+  else
+    DIGEST=\$({ cat ./verify.sh 2>/dev/null; git diff --cached 2>/dev/null; } | shasum -a 256 2>/dev/null | awk '{print substr(\$1,1,16)}')
+  fi
+fi
 {
   echo ""
   [ -n "\$ROUTES" ] && echo "Amiral-Route: \$ROUTES"
-  echo "Amiral-Verified: \$VERIF"
-  echo "Amiral-Attest: sha256:\$ATTEST"
+  [ -n "\$DIGEST" ] && echo "Amiral-Diff-Digest: sha256:\$DIGEST"
 HOOK
     if [ "$WITH_COST" = "1" ]; then
-      cat >> "$(hook_path)" << 'HOOK'
-  NET=$(awk -F'\t' '/^NET/{print $2}' <(awk -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk" "$AMIRAL_HOME/butin.jsonl" 2>/dev/null) 2>/dev/null)
-  [ -n "$NET" ] && echo "Amiral-Net-Saved: \$$NET (net, escalations deducted)"
+      cat >> "$HOOK_FILE" << 'HOOK'
+  # amiral-attributed net only: build the agent set from the SAME shared
+  # helper every other call site uses, so this commit trailer never advertises
+  # the mixed total (the exact over-claim the report fix exists to kill) and
+  # the sanitization rule can't drift. Helper/manifest absent -> empty
+  # AMIRAL_AGENTS -> core.awk's legacy all-amiral fallback, same as everywhere.
+  AMIRAL_AGENTS=""
+  AGENTS_SH="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/agents.sh"
+  [ -f "$AGENTS_SH" ] && . "$AGENTS_SH" && command -v amiral_agents_csv >/dev/null 2>&1 \
+    && AMIRAL_AGENTS="$(amiral_agents_csv)"
+  NET=$(awk -F'\t' '/^NET/{print $2}' <(awk -v AMIRAL_AGENTS="$AMIRAL_AGENTS" -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk" "$AMIRAL_HOME/butin.jsonl" 2>/dev/null) 2>/dev/null)
+  [ -n "$NET" ] && echo "Amiral-Net-Saved: \$$NET (net, escalations deducted; amiral-routed only)"
 HOOK
     fi
-    echo '} >> "$MSG"' >> "$(hook_path)"
-    chmod +x "$(hook_path)"
-    echo "⚓ journal enabled for this repo (trailers: Route + Verified + Attest$( [ "$WITH_COST" = "1" ] && echo " + Net-Saved" ))."
-    echo "  disable anytime: amiral-journal disable" ;;
+    { echo '} >> "$MSG"'; echo 'exit 0'; } >> "$HOOK_FILE"
+    # trailing exit 0 is load-bearing: the group's exit status is its last
+    # command's, and Route/Digest/Net-Saved are now each conditional — if the
+    # last one evaluates false the hook would exit nonzero and ABORT the
+    # commit (this bookkeeping hook must never block a commit).
+    chmod +x "$HOOK_FILE" 2>/dev/null
+    # corsaire-3: verify the hook actually landed before claiming success —
+    # in a worktree $ROOT/.git used to be hardcoded to a path that's a FILE
+    # there, so mkdir/cat/chmod silently failed to stderr while this banner
+    # still printed (a false claim of protection). hook_path() above now
+    # resolves the real (shared) hooks dir via `git rev-parse --git-path
+    # hooks`, which works from inside a worktree too; this check is the
+    # last line of defense if the write still fails for some other reason
+    # (permissions, read-only fs, etc).
+    if [ -f "$HOOK_FILE" ] && [ -x "$HOOK_FILE" ]; then
+      echo "⚓ journal enabled for this repo (trailers: Route + Diff-Digest$( [ "$WITH_COST" = "1" ] && echo " + Net-Saved" ))."
+      echo "  disable anytime: amiral-journal disable"
+    else
+      echo "journal NOT enabled — hook failed to install at $HOOK_FILE"
+      exit 1
+    fi ;;
   disable)
     rm -f "$(hook_path)" && echo "journal disabled (hook removed)." ;;
   status)
     if [ -x "$(hook_path)" 2>/dev/null ]; then echo "journal: ENABLED in $(repo_root)"; else echo "journal: disabled here (enable: amiral-journal enable)"; fi ;;
   note)
     # squash-merge survivors: same provenance as a git note on HEAD.
-    # Attest covers the COMMITTED diff (git show HEAD), recomputable.
+    # Digest covers the COMMITTED diff (git show HEAD), recomputable.
     ROOT=$(repo_root) || { echo "not a git repo"; exit 1; }
-    ROUTES=$(tail -50 "$LOG" 2>/dev/null | grep -v unmeasured \
-      | grep -oE '"agent":"[^"]*","chosen_model":"[^"]*"' \
-      | sed 's/"agent":"//;s/","chosen_model":"/=/;s/"//' | sort -u | paste -sd' ' -)
+    # H4: same repo-scoping as the hook — cwd == ROOT or under it; cwd-less
+    # (legacy) events excluded, never guessed. See amiral-journal enable for
+    # the residual-window note (last 50 lines of the global log, filtered).
+    # Also doc-only (corsaire): the comparison is a raw string match — on a
+    # case-insensitive filesystem a casing mismatch drops a legit route
+    # (under-report only, never over-report; accepted).
+    # corsaire-4: same byte-cap + per-line-length guard as the hook — a
+    # pathological line must not stall this command either.
+    ROUTES=$(tail -c 200000 "$LOG" 2>/dev/null | tail -50 | grep -v '"unmeasurable"' | while IFS= read -r EVLINE; do
+      [ "${#EVLINE}" -gt 8000 ] && continue
+      CWD=$(printf '%s\n' "$EVLINE" | grep -oE '"cwd"[ ]*:[ ]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
+      [ -z "$CWD" ] && continue
+      case "$CWD" in
+        ("$ROOT"|"$ROOT"/*) ;;
+        (*) continue ;;
+      esac
+      # corsaire-2: same sanitization as the hook — agent/chosen_model come
+      # from an unauthenticated local file and may only contribute inert
+      # token characters, never structure.
+      A=$(printf '%s\n' "$EVLINE" | grep -oE '"agent"[ ]*:[ ]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/' | sed 's/[^A-Za-z0-9._-]//g')
+      M=$(printf '%s\n' "$EVLINE" | grep -oE '"chosen_model"[ ]*:[ ]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/' | sed 's/[^A-Za-z0-9._-]//g')
+      [ -n "$A" ] && [ -n "$M" ] && echo "$A=$M"
+    done | sort -u | paste -sd' ' -)
     AH=$({ cat ./verify.sh 2>/dev/null; git show --format= HEAD 2>/dev/null; } \
       | shasum -a 256 2>/dev/null | awk '{print substr($1,1,16)}')
     N="Amiral-Route: ${ROUTES:-unknown}
-Amiral-Attest: sha256:$AH (verify.sh + committed diff)
+Amiral-Diff-Digest: sha256:$AH (verify.sh + committed diff — proves what was present, not what was run)
 Amiral-Noted: $(date -u +%FT%TZ)"
     git notes --ref=amiral add -f -m "$N" HEAD && echo "⚓ note attached to HEAD (ref: amiral)."
     echo "  notes don't push by default: git push origin refs/notes/amiral" ;;
   attest)
-    echo "Amiral-Attest: sha256:$(attest_hash)  (recompute: cat verify.sh + git diff --cached | sha256)" ;;
+    echo "Amiral-Diff-Digest: sha256:$(attest_hash)  (recompute: cat verify.sh + git diff --cached | sha256 — proves what was present, not what was run)" ;;
   flag)
-    # pavillon — refuses to lie small (rule C3): >=20 measured tasks
+    # v0.15: amiral-attributed agent set — the badge must never credit
+    # amiral for subagent activity it didn't route (same manifest as
+    # bin/amiral-butin and cache.sh). Both the NET *and* the task count on
+    # the badge are amiral-routed only: advertising a mixed task count next
+    # to an amiral-only net is the same over-claim, one column over.
+    AGENTS_SH="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/agents.sh"
+    [ -f "$AGENTS_SH" ] || AGENTS_SH="$HERE/lib/butin/agents.sh"
+    AMIRAL_AGENTS=""
+    [ -f "$AGENTS_SH" ] && . "$AGENTS_SH"
+    command -v amiral_agents_csv >/dev/null 2>&1 && AMIRAL_AGENTS="$(amiral_agents_csv "$HERE/lib/butin/amiral-agents.txt")"
+    REPORT=$(awk -v AMIRAL_AGENTS="$AMIRAL_AGENTS" -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk" "$LOG" 2>/dev/null)
+    NET=$(echo "$REPORT" | awk -F'\t' '/^NET/{print $2}')
+    # AMIR_TASKS = amiral-routed measured tasks (sum of the AGENTS_START block's
+    # Tasks column — brain and other-bucket agents never appear there).
+    AMIR_TASKS=$(echo "$REPORT" | awk -F'\t' '/^AGENTS_START/{p=1;next}/^AGENTS_END/{p=0}p{s+=$2}END{print s+0}')
+    OTHER_TASKS=$(echo "$REPORT" | awk -F'\t' '/^OTHER_TASKS/{print $2}'); OTHER_TASKS=${OTHER_TASKS:-0}
     MEAS=$(grep -c '"real_cost_usd"' "$LOG" 2>/dev/null || echo 0)
-    TOTAL=$(grep -c '"agent"' "$LOG" 2>/dev/null || echo 0)
-    if [ "${MEAS:-0}" -lt 20 ]; then
-      echo "pavillon: not enough data to share honestly yet ($MEAS/20 measured tasks)."; exit 1
+    # pavillon — refuses to lie small (rule C3): >=20 AMIRAL-ROUTED tasks. The
+    # badge advertises amiral's routing, so the gate is on amiral data, not on
+    # foreign subagent volume the tool happened to also measure.
+    if [ "${AMIR_TASKS:-0}" -lt 20 ]; then
+      echo "pavillon: not enough amiral-routed data to share honestly yet ($AMIR_TASKS/20 amiral-routed tasks)."; exit 1
     fi
-    NET=$(awk -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk" "$LOG" 2>/dev/null | awk -F'\t' '/^NET/{print $2}')
-    echo "[![sailed with amiral](https://img.shields.io/badge/⚓_sailed_with_amiral-${MEAS}_tasks_·_net_%2B\$${NET}-2b4c7e)](https://github.com/Rompomepome/amiral/blob/main/BENCHMARKS.md)"
-    echo "coverage: $MEAS/$TOTAL measured · net of escalations & brain premium · methodology in BENCHMARKS.md" ;;
+    echo "[![sailed with amiral](https://img.shields.io/badge/⚓_sailed_with_amiral-${AMIR_TASKS}_amiral--routed_tasks_·_net_%2B\$${NET}-2b4c7e)](https://github.com/Rompomepome/amiral/blob/main/BENCHMARKS.md)"
+    echo "coverage: $AMIR_TASKS amiral-routed · $OTHER_TASKS other subagent task(s) measured separately · net of escalations & brain premium · methodology in BENCHMARKS.md" ;;
   *) echo "usage: amiral-journal enable [--with-cost] | disable | status | attest | note | flag"; exit 1 ;;
 esac

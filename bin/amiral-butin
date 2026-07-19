@@ -12,6 +12,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CORE="$HERE/lib/butin/core.awk"
 # locate core when installed (copied next to the script)
 [ -f "$CORE" ] || CORE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk"
+# v0.15: amiral-attributed agent set (agents/*.md) — partitions NET/GROSS
+# away from subagents amiral never routed (Claude Code built-ins, custom
+# agents). agents.sh is a sibling of core.awk in both layouts.
+AGENTS_SH="$HERE/lib/butin/agents.sh"
+[ -f "$AGENTS_SH" ] || AGENTS_SH="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/agents.sh"
+[ -f "$AGENTS_SH" ] && . "$AGENTS_SH"
+AMIRAL_AGENTS=""
+command -v amiral_agents_csv >/dev/null 2>&1 && AMIRAL_AGENTS="$(amiral_agents_csv "$HERE/lib/butin/amiral-agents.txt")"
 
 # colors (respect NO_COLOR + --no-color)
 if [ -n "${NO_COLOR:-}" ] || [ "${1:-}" = "--no-color" ]; then
@@ -21,6 +29,53 @@ else
 fi
 
 mkdir -p "$AMIRAL_HOME"
+
+# --- backfill: mint worker receipts for PAST sessions' real subagent
+# transcripts (live discovery only ever scans the CURRENT session). SAME
+# rules as live discovery — hostile-path guard, stable-gate, dedup against
+# both receipts.jsonl and butin.jsonl. Mints ONLY, never measures. Must run
+# BEFORE the cold-measure pass / statusline cache below: `--dry-run` has to
+# write NOTHING at all, and routing it here (before either touches a file)
+# is what makes that true. ---
+if [ "${1:-}" = "backfill" ]; then
+  shift
+  BACKFILL="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/backfill.py"
+  [ -f "$BACKFILL" ] || BACKFILL="$HERE/lib/butin/backfill.py"
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 not found — backfill requires python3"
+    exit 1
+  fi
+  if [ ! -f "$BACKFILL" ]; then
+    echo "backfill.py not found — looked for:"
+    echo "  ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/backfill.py"
+    echo "  $HERE/lib/butin/backfill.py"
+    exit 1
+  fi
+  python3 "$BACKFILL" "$@"
+  exit $?
+fi
+
+# v0.12: measure pending receipts from now-stable transcripts (cold pass).
+MEASURE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/measure.py"
+[ -f "$MEASURE" ] || MEASURE="$HERE/lib/butin/measure.py"
+if [ -s "$AMIRAL_HOME/receipts.jsonl" ] && [ -f "$MEASURE" ] && command -v python3 >/dev/null 2>&1; then
+  # Same 60s stable-gate as the hook path (cache.sh): a transcript modified
+  # <60s ago stays PENDING rather than being measured warm — measured-once
+  # numbers are forever, so the report must not race a still-flushing task.
+  BUTIN_STABLE_SECS="${BUTIN_STABLE_SECS:-60}" \
+  BUTIN_PRICES="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/pricing.tsv" \
+    python3 "$MEASURE" 2>/dev/null | grep -qE '^measured' && COLD=1
+fi
+
+# v0.13: keep the statusline cache in sync with whatever this run just
+# computed. cache.sh self-gates on the opt-in flag and takes its own lock,
+# so this is a silent no-op for anyone who never ran `amiral statusline
+# install`. Errors swallowed — must never affect this script's own output.
+CACHESH="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/cache.sh"
+[ -f "$CACHESH" ] || CACHESH="$HERE/lib/butin/cache.sh"
+if [ -f "$AMIRAL_HOME/statusline-on" ] && [ -f "$CACHESH" ]; then
+  bash "$CACHESH" >/dev/null 2>&1 || true
+fi
 
 # --- init / rebaseline: baseline detection with the Fable trap guarded ---
 if [ "${1:-}" = "init" ] || [ "${1:-}" = "rebaseline" ]; then
@@ -40,7 +95,9 @@ if [ "${1:-}" = "init" ] || [ "${1:-}" = "rebaseline" ]; then
       read -r ch </dev/tty 2>/dev/null || read -r ch || ch=2
       [ "$ch" = "1" ] || { BM="claude-sonnet-4-6"; SRC="chosen (conservative)"; } ;;
   esac
-  printf '{ "baseline_model": "%s", "baseline_source": "%s", "mode": "%s" }\n' "$BM" "$SRC" "$MODE_D" > "$CONFIG"
+  SET_TS="$(date -u +%FT%TZ)"
+  printf '{ "baseline_model": "%s", "baseline_source": "%s", "mode": "%s", "set_ts": "%s" }\n' "$BM" "$SRC" "$MODE_D" "$SET_TS" > "$CONFIG.tmp.$$"
+  mv "$CONFIG.tmp.$$" "$CONFIG"
   echo "⚓ baseline set: $BM ($SRC), mode: $MODE_D"
   [ "${1:-}" = "rebaseline" ] && echo "  (applies to FUTURE events only; history keeps the baseline it was priced with)"
   exit 0
@@ -68,6 +125,399 @@ if [ "${1:-}" = "refresh-pricing" ]; then
   exit 0
 fi
 
+# --- config: live re-baseline / re-mode / show. Validated, no detection. ---
+# Works with no log yet (must run before the "no routed tasks" early-exit).
+if [ "${1:-}" = "config" ]; then
+  shift
+  HAVE_BASELINE=0; HAVE_MODE=0; ARG_BASELINE=""; ARG_MODE=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --baseline) HAVE_BASELINE=1; ARG_BASELINE="${2:-}"; shift; [ "$#" -gt 0 ] && shift ;;
+      --mode)     HAVE_MODE=1; ARG_MODE="${2:-}"; shift; [ "$#" -gt 0 ] && shift ;;
+      --show)     shift ;;
+      *) echo "usage: amiral-butin config [--baseline <pricing_id>] [--mode api|plan] [--show]"; exit 1 ;;
+    esac
+  done
+
+  CP="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/pricing.tsv"; [ -f "$CP" ] || CP="$HERE/lib/butin/pricing.tsv"
+
+  # --- validate everything FIRST: write nothing on any failure ---
+  if [ "$HAVE_BASELINE" = "1" ]; then
+    if [ ! -f "$CP" ]; then
+      echo "no pricing table found — looked for:"
+      echo "  ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/pricing.tsv"
+      echo "  $HERE/lib/butin/pricing.tsv"
+      echo "reinstall amiral (./install.sh) or point CLAUDE_CONFIG_DIR at a full install"
+      exit 1
+    fi
+    grep -q "^$ARG_BASELINE	" "$CP" || {
+      echo "unknown pricing_id: $ARG_BASELINE"
+      echo "known pricing_ids:"
+      grep -vE '^#' "$CP" | awk -F'\t' 'NF{print "  "$1}'
+      echo "price it yourself: amiral-butin add-model $ARG_BASELINE <in_\$/Mtok> <out_\$/Mtok>"
+      exit 1
+    }
+  fi
+  if [ "$HAVE_MODE" = "1" ]; then
+    case "$ARG_MODE" in
+      api|plan) ;;
+      *) echo "--mode must be api or plan (got: $ARG_MODE)"; exit 1 ;;
+    esac
+  fi
+
+  # --- show: bare "config", or "config --show", with no baseline/mode change ---
+  if [ "$HAVE_BASELINE" = "0" ] && [ "$HAVE_MODE" = "0" ]; then
+    if [ ! -f "$CONFIG" ]; then
+      echo "no butin config yet — run: amiral-butin init"
+      exit 0
+    fi
+    SB=$(grep -oE '"baseline_model"[ ]*:[ ]*"[^"]*"' "$CONFIG" | sed 's/.*"\([^"]*\)"$/\1/' 2>/dev/null); SB=${SB:-?}
+    SS=$(grep -oE '"baseline_source"[ ]*:[ ]*"[^"]*"' "$CONFIG" | sed 's/.*"\([^"]*\)"$/\1/' 2>/dev/null); SS=${SS:-?}
+    SM=$(grep -oE '"mode"[ ]*:[ ]*"[^"]*"' "$CONFIG" | sed 's/.*"\([^"]*\)"$/\1/' 2>/dev/null); SM=${SM:-api}
+    ST=$(grep -oE '"set_ts"[ ]*:[ ]*"[^"]*"' "$CONFIG" | sed 's/.*"\([^"]*\)"$/\1/' 2>/dev/null); ST=${ST:-—}
+    RATES=""; SPV="unknown"
+    if [ -f "$CP" ]; then
+      RATES=$(awk -F'\t' -v m="$SB" '$1==m{printf "in=%s out=%s cache_write=%s cache_read=%s ($/tok)",$2,$3,$4,$5}' "$CP")
+      T=$(grep -oE 'pricing_version: [0-9-]+' "$CP" | head -1 | awk '{print $2}'); [ -n "$T" ] && SPV="$T"
+    fi
+    echo ""
+    echo "⚓ butin config"
+    echo "  baseline_model:  $SB"
+    if [ -n "$RATES" ]; then echo "  baseline rates:  $RATES"; else echo "  baseline rates:  unavailable ($SB not priced, or no pricing table found)"; fi
+    echo "  baseline_source: $SS"
+    echo "  mode:            $SM"
+    echo "  set_ts:          $ST"
+    echo "  pricing_version: $SPV"
+    if [ -f "$AMIRAL_HOME/butin-cache.tsv" ]; then
+      CM=$(awk -F'\t' '$1=="mode"{print $2}' "$AMIRAL_HOME/butin-cache.tsv" 2>/dev/null)
+      [ -n "$CM" ] && [ "$CM" != "$SM" ] && echo "  note: statusline cache still shows mode=$CM — it updates on the next collected event."
+    fi
+    echo ""
+    exit 0
+  fi
+
+  # --- write: baseline and/or mode given, already validated above ---
+  NB="claude-sonnet-4-6"; NS="default (conservative)"; NM="api"
+  if [ -f "$CONFIG" ]; then
+    T=$(grep -oE '"baseline_model"[ ]*:[ ]*"[^"]*"' "$CONFIG" | sed 's/.*"\([^"]*\)"$/\1/' 2>/dev/null); [ -n "$T" ] && NB="$T"
+    T=$(grep -oE '"baseline_source"[ ]*:[ ]*"[^"]*"' "$CONFIG" | sed 's/.*"\([^"]*\)"$/\1/' 2>/dev/null); [ -n "$T" ] && NS="$T"
+    T=$(grep -oE '"mode"[ ]*:[ ]*"[^"]*"' "$CONFIG" | sed 's/.*"\([^"]*\)"$/\1/' 2>/dev/null); [ -n "$T" ] && NM="$T"
+  fi
+  [ "$HAVE_BASELINE" = "1" ] && { NB="$ARG_BASELINE"; NS="manual (config)"; }
+  [ "$HAVE_MODE" = "1" ] && NM="$ARG_MODE"
+  SET_TS="$(date -u +%FT%TZ)"
+  printf '{ "baseline_model": "%s", "baseline_source": "%s", "mode": "%s", "set_ts": "%s" }\n' "$NB" "$NS" "$NM" "$SET_TS" > "$CONFIG.tmp.$$"
+  mv "$CONFIG.tmp.$$" "$CONFIG"
+  if [ "$HAVE_BASELINE" = "1" ]; then
+    echo "⚓ baseline set: $NB (manual). Applies to FUTURE events only —"
+    echo "  history keeps the baseline it was priced with."
+  fi
+  [ "$HAVE_MODE" = "1" ] && echo "⚓ mode set: $NM (applies from the next collected event)."
+  exit 0
+fi
+
+# --- statusline: opt-in install/uninstall/mute/unmute/status (v0.13) ---
+# One distribution channel (copied by install.sh alongside this file);
+# routed here from `amiral statusline ...` via shell/amiral-profiles.sh.
+if [ "${1:-}" = "statusline" ]; then
+  shift
+  SUB="${1:-}"
+  SETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+  RENDER="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/amiral-statusline.sh"
+  PREV_JSON="$AMIRAL_HOME/statusline-prev.json"
+  PREV_CMD="$AMIRAL_HOME/statusline-prev-cmd"
+  FLAG="$AMIRAL_HOME/statusline-on"
+  CACHESH="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/cache.sh"
+  [ -f "$CACHESH" ] || CACHESH="$HERE/lib/butin/cache.sh"
+
+  HAVE_JQ=0; command -v jq >/dev/null 2>&1 && HAVE_JQ=1
+  HAVE_PY=0; command -v python3 >/dev/null 2>&1 && HAVE_PY=1
+
+  # settings.json must parse (or not exist yet) — never "fix" a broken file.
+  _settings_parse_ok() {
+    [ -f "$SETTINGS" ] || return 0
+    if [ "$HAVE_JQ" = "1" ]; then jq empty "$SETTINGS" >/dev/null 2>&1; return $?; fi
+    if [ "$HAVE_PY" = "1" ]; then python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$SETTINGS" >/dev/null 2>&1; return $?; fi
+    return 0   # no jq, no python3: can't validate here — the edit path below prints guidance instead of writing
+  }
+
+  # current .statusLine.command (empty if absent / not a command entry).
+  _statusline_cmd() {
+    [ -f "$SETTINGS" ] && [ "$HAVE_JQ$HAVE_PY" != "00" ] || { printf ''; return; }
+    if [ "$HAVE_JQ" = "1" ]; then jq -r '.statusLine.command // empty' "$SETTINGS" 2>/dev/null; return; fi
+    python3 -c "
+import json,sys
+try: d=json.load(open(sys.argv[1]))
+except Exception: d={}
+sl=d.get('statusLine')
+print(sl.get('command','') if isinstance(sl,dict) else '')
+" "$SETTINGS" 2>/dev/null
+  }
+
+  # current .statusLine object, verbatim, compact JSON (empty if absent).
+  _statusline_obj() {
+    [ -f "$SETTINGS" ] && [ "$HAVE_JQ$HAVE_PY" != "00" ] || { printf ''; return; }
+    if [ "$HAVE_JQ" = "1" ]; then jq -c '.statusLine // empty' "$SETTINGS" 2>/dev/null; return; fi
+    python3 -c "
+import json,sys
+try: d=json.load(open(sys.argv[1]))
+except Exception: d={}
+sl=d.get('statusLine')
+if sl is not None: print(json.dumps(sl, separators=(',',':')))
+" "$SETTINGS" 2>/dev/null
+  }
+
+  # build the JSON snippet for OUR statusLine entry ({type,command,padding}),
+  # quoting the render path so a spaced $HOME can't break the command line.
+  _our_statusline_obj() {
+    CMDSTR="bash \"$RENDER\""
+    if [ "$HAVE_JQ" = "1" ]; then jq -n --arg cmd "$CMDSTR" '{type:"command",command:$cmd,padding:0}'; return; fi
+    if [ "$HAVE_PY" = "1" ]; then python3 -c "import json,sys; print(json.dumps({'type':'command','command':sys.argv[1],'padding':0}))" "$CMDSTR"; return; fi
+    printf '{"type":"command","command":"bash \\"%s\\"","padding":0}' "$RENDER"
+  }
+
+  # write .statusLine = <json obj string>, preserving every other key.
+  # Atomic: compose to tmp.$$ in the settings directory, mv over. Returns
+  # 1 (not 2xx) when neither jq nor python3 is available — caller prints
+  # the manual snippet and touches nothing (§1.5: guidance, not failure).
+  _settings_set_statusline() {
+    OBJ="$1"; TMP="$SETTINGS.tmp.$$"
+    if [ "$HAVE_JQ" = "1" ]; then
+      if [ -f "$SETTINGS" ]; then jq --argjson sl "$OBJ" '.statusLine = $sl' "$SETTINGS" > "$TMP" 2>/dev/null
+      else echo '{}' | jq --argjson sl "$OBJ" '.statusLine = $sl' > "$TMP" 2>/dev/null; fi
+    elif [ "$HAVE_PY" = "1" ]; then
+      python3 -c "
+import json,sys
+path, sl, out = sys.argv[1], json.loads(sys.argv[2]), sys.argv[3]
+try: d=json.load(open(path))
+except Exception: d={}
+d['statusLine']=sl
+json.dump(d, open(out,'w'), indent=2)
+" "$SETTINGS" "$OBJ" "$TMP" 2>/dev/null
+    else
+      return 1
+    fi
+    [ -s "$TMP" ] || { rm -f "$TMP"; return 1; }
+    _settings_commit "$TMP"
+  }
+
+  # restore .statusLine to the saved verbatim object, or delete the key
+  # when nothing was saved. Same atomicity + same not-available contract.
+  # The saved object is restored ONLY if it still matches its install-time
+  # pin — a poisoned statusline-prev.json (e.g. a `curl … | sh` command)
+  # must NOT be written back into settings.json as a native statusLine that
+  # would outlive amiral. Unverified content → fall through to key removal.
+  _settings_restore_statusline() {
+    if [ -s "$PREV_JSON" ] && _sl_verify "$PREV_JSON"; then _settings_set_statusline "$(cat "$PREV_JSON")"; return $?; fi
+    TMP="$SETTINGS.tmp.$$"
+    if [ "$HAVE_JQ" = "1" ]; then
+      jq 'del(.statusLine)' "$SETTINGS" > "$TMP" 2>/dev/null
+    elif [ "$HAVE_PY" = "1" ]; then
+      python3 -c "
+import json,sys
+try: d=json.load(open(sys.argv[1]))
+except Exception: d={}
+d.pop('statusLine', None)
+json.dump(d, open(sys.argv[2],'w'), indent=2)
+" "$SETTINGS" "$TMP" 2>/dev/null
+    else
+      return 1
+    fi
+    [ -s "$TMP" ] || { rm -f "$TMP"; return 1; }
+    _settings_commit "$TMP"
+  }
+
+  _warn_project_shadow() {
+    for f in "./.claude/settings.json" "./.claude/settings.local.json"; do
+      if [ -f "$f" ] && grep -q "statusLine" "$f" 2>/dev/null; then
+        echo "  warning: $f defines its own statusLine — project scope overrides"
+        echo "  user scope (code.claude.com/docs/en/settings.md), so ours will NOT show in this project."
+      fi
+    done
+  }
+
+  # Integrity-pin the displaced statusline. The saved copies live in
+  # ~/.amiral at the user's own perms, OUTSIDE the workspace-trust boundary
+  # Claude Code enforces on settings.json — yet the renderer EXECUTES
+  # statusline-prev-cmd every render, and uninstall writes statusline-prev.json
+  # back into settings.json verbatim. Without a pin, anything running as the
+  # user (a prompt-injected subagent with Bash, a poisoned dependency) could
+  # rewrite either and turn "can write a file" into recurring, native code
+  # execution that outlives amiral. We hash what we saved and refuse a copy
+  # that no longer matches: tamper-EVIDENT, exactly how amiral-trust pins
+  # verify.sh (SECURITY.md). Not tamper-PROOF against an attacker who rewrites
+  # both the file and its .sha — nothing owned by the user is — but it closes
+  # the accidental, the other-user, and the single-file-drop cases and makes
+  # the rest loud instead of silent.
+  _sl_hash() { [ -f "$1" ] && shasum "$1" 2>/dev/null | awk '{print $1}'; }
+  _sl_pin()  { _sl_hash "$1" > "$1.sha" 2>/dev/null && chmod 600 "$1.sha" 2>/dev/null; }
+  _sl_verify() {   # 0 = present AND matches its pin; 1 = absent/failed/tampered
+    [ -s "$1" ] || return 1
+    _H="$(_sl_hash "$1")"; _P="$(cat "$1.sha" 2>/dev/null)"
+    [ -n "$_H" ] && [ -n "$_P" ] && [ "$_H" = "$_P" ]
+  }
+
+  # timestamped backup, only when we can actually edit (no false "nothing
+  # changed"), and never cp'd THROUGH a pre-planted symlink at the (1s-
+  # predictable) backup path. 0600: settings.json can carry hook/MCP secrets.
+  _settings_backup() {
+    [ -f "$SETTINGS" ] || return 0
+    [ "$HAVE_JQ$HAVE_PY" != "00" ] || return 0
+    _b="$SETTINGS.amiral-bak.$(date +%s)"
+    rm -f "$_b" 2>/dev/null
+    cp "$SETTINGS" "$_b" 2>/dev/null && chmod 600 "$_b" 2>/dev/null
+    return 0
+  }
+
+  # commit a composed tmp file onto settings.json. A symlinked settings.json
+  # (dotfiles via stow/chezmoi) must not be silently replaced by a plain file
+  # — write THROUGH the link so the dotfiles target updates, and say so.
+  _settings_commit() {
+    if [ -L "$SETTINGS" ]; then
+      echo "  note: $SETTINGS is a symlink — updating its target in place (link kept)." >&2
+      cat "$1" > "$SETTINGS" 2>/dev/null && rm -f "$1" 2>/dev/null
+    else
+      mv "$1" "$SETTINGS"
+    fi
+  }
+
+  case "$SUB" in
+    install)
+      if ! _settings_parse_ok; then
+        echo "⚓ $SETTINGS exists but does not parse as JSON — refusing to touch it."
+        echo "  fix it by hand, then re-run: amiral-butin statusline install"
+        exit 1
+      fi
+      if [ ! -f "$RENDER" ]; then
+        SRC="$HERE/bin/amiral-statusline"
+        if [ -f "$SRC" ]; then
+          mkdir -p "$(dirname "$RENDER")"
+          cp "$SRC" "$RENDER"; chmod +x "$RENDER"
+        else
+          echo "⚓ renderer not found ($RENDER) and no repo checkout at $SRC"
+          echo "  re-run ./install.sh from the amiral repo, then retry."
+          exit 1
+        fi
+      fi
+      CUR_CMD="$(_statusline_cmd)"
+      case "$CUR_CMD" in
+        *amiral-statusline*)
+          touch "$FLAG"
+          echo "⚓ statusline already installed."
+          exit 0 ;;
+      esac
+      _settings_backup
+      PREV_OBJ="$(_statusline_obj)"
+      rm -f "$PREV_JSON" "$PREV_JSON.sha" "$PREV_CMD" "$PREV_CMD.sha"
+      if [ -n "$PREV_OBJ" ]; then
+        ( umask 077; printf '%s' "$PREV_OBJ" > "$PREV_JSON" ); chmod 600 "$PREV_JSON" 2>/dev/null; _sl_pin "$PREV_JSON"
+        if [ -n "$CUR_CMD" ]; then
+          ( umask 077; printf '%s' "$CUR_CMD" > "$PREV_CMD" ); chmod 600 "$PREV_CMD" 2>/dev/null; _sl_pin "$PREV_CMD"
+        fi
+      fi
+      NEWOBJ="$(_our_statusline_obj)"
+      if _settings_set_statusline "$NEWOBJ"; then
+        touch "$FLAG"
+        BUTIN_CACHE_FORCE=1 bash "$CACHESH" >/dev/null 2>&1 || true
+        echo ""
+        echo "⚓ statusline installed -> $SETTINGS"
+        [ -n "$PREV_OBJ" ] && echo "  a previous statusLine was saved and will be restored on uninstall"
+        echo "  appears on your next interaction in Claude Code."
+        echo "  mute (good-news only):  amiral statusline mute"
+        echo "  remove:                 amiral statusline uninstall"
+        echo "  optional, for idle background fleets: add \"refreshInterval\": 30 (seconds,"
+        echo "  min 1) next to .statusLine in $SETTINGS."
+        _warn_project_shadow
+        echo ""
+        exit 0
+      else
+        echo "⚓ could not edit $SETTINGS automatically (no jq, no python3 found)."
+        echo "  add this by hand under the top-level object in $SETTINGS:"
+        echo ""
+        echo "  \"statusLine\": $NEWOBJ"
+        echo ""
+        echo "  nothing was changed."
+        exit 0
+      fi
+      ;;
+    uninstall)
+      CUR_CMD="$(_statusline_cmd)"
+      case "$CUR_CMD" in
+        *amiral-statusline*)
+          _settings_backup
+          # none / ok / tampered — for the message only; the restore helper
+          # re-verifies and refuses poisoned content on its own.
+          PREV_STATE=none
+          if [ -s "$PREV_JSON" ]; then
+            if _sl_verify "$PREV_JSON"; then PREV_STATE=ok; else PREV_STATE=tampered; fi
+          fi
+          if _settings_restore_statusline; then
+            rm -f "$PREV_JSON" "$PREV_JSON.sha" "$PREV_CMD" "$PREV_CMD.sha" "$FLAG" "$AMIRAL_HOME/butin-cache.tsv"
+            echo "⚓ statusline uninstalled."
+            case "$PREV_STATE" in
+              ok)   echo "  previous statusLine restored." ;;
+              none) echo "  no previous statusLine — key removed." ;;
+              tampered)
+                echo "  WARNING: the saved previous statusLine FAILED its integrity check"
+                echo "  (it changed after install) — it was NOT restored; the statusLine key was"
+                echo "  removed instead. Your pre-install backup is at $SETTINGS.amiral-bak.*" ;;
+            esac
+            echo "  (butin.jsonl and receipts.jsonl left untouched)"
+          else
+            echo "⚓ could not edit $SETTINGS automatically (no jq, no python3 found)."
+            echo "  remove the \"statusLine\" key by hand (or restore it from $PREV_JSON if present)."
+            echo "  nothing was changed."
+          fi
+          exit 0 ;;
+        *)
+          echo "⚓ statusLine in $SETTINGS is not amiral's — leaving it untouched."
+          exit 0 ;;
+      esac
+      ;;
+    mute)
+      touch "$AMIRAL_HOME/statusline-mute"
+      echo "⚓ statusline muted: good news is suppressed."
+      echo "  a net-NEGATIVE day still shows in amber — honesty outranks mute."
+      exit 0 ;;
+    unmute)
+      rm -f "$AMIRAL_HOME/statusline-mute"
+      echo "⚓ statusline unmuted."
+      exit 0 ;;
+    status)
+      echo ""
+      echo "⚓ butin statusline"
+      CUR_CMD="$(_statusline_cmd)"
+      case "$CUR_CMD" in
+        *amiral-statusline*) echo "  installed:        yes (user scope, $SETTINGS)" ;;
+        *) echo "  installed:        no" ;;
+      esac
+      if [ -f "$AMIRAL_HOME/statusline-mute" ]; then echo "  muted:            yes"; else echo "  muted:            no"; fi
+      if [ -f "$FLAG" ]; then echo "  opt-in flag:      on"; else echo "  opt-in flag:      off"; fi
+      for f in "./.claude/settings.json" "./.claude/settings.local.json"; do
+        [ -f "$f" ] && grep -q "statusLine" "$f" 2>/dev/null && echo "  note: $f shadows the user-scope statusline here (project scope wins)"
+      done
+      [ -s "$PREV_JSON" ] && echo "  displaced statusLine saved: yes ($PREV_JSON, restored on uninstall)"
+      SCACHE="$AMIRAL_HOME/butin-cache.tsv"
+      if [ -f "$SCACHE" ]; then
+        GE=$(awk -F'\t' '$1=="generated_epoch"{print $2}' "$SCACHE" 2>/dev/null)
+        case "${GE:-}" in
+          ''|*[!0-9]*) echo "  cache:            present (age unknown)" ;;
+          *)
+            AGE=$(( $(date +%s) - GE ))
+            if [ "$AGE" -lt 60 ]; then echo "  cache:            present (${AGE}s old)"
+            else echo "  cache:            present ($(( AGE / 60 ))min old)"; fi ;;
+        esac
+      else
+        echo "  cache:            none yet (runs on the next task event)"
+      fi
+      echo ""
+      exit 0 ;;
+    *)
+      echo "usage: amiral-butin statusline install|uninstall|mute|unmute|status"
+      exit 1 ;;
+  esac
+fi
+
 # ---- init / rebaseline: create butin-config.json (first-run) ----
 
 if [ ! -f "$LOG" ]; then
@@ -93,7 +543,7 @@ fi
 # run the universal core
 HAIRCUT=0
 for a in "$@"; do case "$a" in --haircut=*) HAIRCUT="${a#--haircut=}";; esac; done
-REPORT=$(awk -v MODE="$MODE" -v HAIRCUT="$HAIRCUT" -f "$CORE" < "$LOG" 2>/dev/null)
+REPORT=$(awk -v MODE="$MODE" -v HAIRCUT="$HAIRCUT" -v AMIRAL_AGENTS="$AMIRAL_AGENTS" -f "$CORE" < "$LOG" 2>/dev/null)
 
 NET=$(echo "$REPORT" | awk -F'\t' '/^NET/{print $2}')
 GROSS=$(echo "$REPORT" | awk -F'\t' '/^GROSS/{print $2}')
@@ -103,6 +553,11 @@ ESC=$(echo "$REPORT" | awk -F'\t' '/^ESC/{print $2"\t"$3}')
 ESC_N=$(echo "$ESC" | cut -f1); ESC_C=$(echo "$ESC" | cut -f2)
 CHEAP=$(echo "$REPORT" | awk -F'\t' '/^CHEAP_RATE/{print $2"/"$3}')
 BAD=$(echo "$REPORT" | awk -F'\t' '/^BAD_LINES/{print $2}')
+# v0.15: "other" bucket — subagents amiral did NOT route (Claude Code
+# built-ins, or a user's own custom agent). Measured, but never counted
+# into the amiral-attributed NET/GROSS above.
+OTHER_NET=$(echo "$REPORT" | awk -F'\t' '/^OTHER_NET/{print $2}')
+OTHER_TASKS=$(echo "$REPORT" | awk -F'\t' '/^OTHER_TASKS/{print $2}')
 
 PV=$(grep -oE 'pricing_version: [0-9-]+' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/pricing.tsv" "$HERE/lib/butin/pricing.tsv" 2>/dev/null | head -1 | awk '{print $2}')
 if [ -n "$PV" ]; then
@@ -137,25 +592,73 @@ else
   printf "  %-20s ${BOLD}${netcol}%+.2f \$${RST}\n" "Net saved" "${NET:-0}"
 fi
 
+# v0.15: "other" subagents — real, measured activity amiral never routed
+# (a Claude Code built-in like general-purpose/Explore, or the user's own
+# custom agent). Kept OUT of the hero NET above; shown here, dim/copper,
+# clearly labelled, never mixed into "Net saved".
+if [ "${OTHER_TASKS:-0}" != "0" ] && [ -n "$OTHER_TASKS" ]; then
+  echo ""
+  echo "  ${DIM}Other subagents (not amiral-routed):${RST}"
+  echo "$REPORT" | awk -v D="$DIM" -v R="$RST" '
+    /^OTHER_START/{p=1;next} /^OTHER_END/{p=0;next}
+    p{ printf "  %s%-13s %7d  %9.4f  %13.4f  %+9.4f%s\n",D,$1,$2,$3,$4,$5,R }'
+  othercol="$DIM"; case "$OTHER_NET" in -*) othercol="$COPPER";; esac
+  printf "  ${DIM}Other subagents (not amiral-routed): net %s%+.2f \$${DIM} across %s task(s) — measured, not amiral's doing${RST}\n" "$othercol" "${OTHER_NET:-0}" "${OTHER_TASKS:-0}"
+fi
+
 # cheap-route success + honesty caveats
 MEAS=$(echo "$REPORT" | awk -F'\t' '/^MEASURED/{print $2}')
 UNMEAS=$(echo "$REPORT" | awk -F'\t' '/^UNMEASURED/{print $2}')
 DUP=$(echo "$REPORT" | awk -F'\t' '/^DUP/{print $2}')
 VER=$(echo "$REPORT" | awk -F'\t' '/^VERIFIED/{print $2"/"($2+$3)}')
-TOTAL=$((${MEAS:-0} + ${UNMEAS:-0}))
+# NOT `|| echo 0`: under pipefail, grep -c prints "0" AND exits 1 on a
+# present-but-matchless file (routine once cache.sh drains receipts), so the
+# fallback would append a second "0" line and crash the arithmetic below.
+PEND=$(grep -c '"measured":false' "$AMIRAL_HOME/receipts.jsonl" 2>/dev/null | tr -d " ")
+PEND=${PEND:-0}
+TOTAL=$((${MEAS:-0} + ${UNMEAS:-0} + PEND))
 echo ""
-echo "  ${DIM}Coverage: ${MEAS:-0}/$TOTAL tasks measured$( [ "${UNMEAS:-0}" != "0" ] && echo " (${UNMEAS} unmeasured — never invented)" )$( [ "${DUP:-0}" != "0" ] && echo " · ${DUP} duplicate(s) ignored" )${RST}"
+[ "${PEND:-0}" != "0" ] && echo "  ${COPPER}${PEND} task(s) awaiting measurement (transcript not flushed yet — run again later)${RST}"
+COVNOTE=""
+[ "${PEND:-0}" != "0" ] && COVNOTE=" · ${PEND} pending"
+[ "${UNMEAS:-0}" != "0" ] && COVNOTE="$COVNOTE · ${UNMEAS} unmeasurable (never invented)"
+[ "${DUP:-0}" != "0" ] && COVNOTE="$COVNOTE · ${DUP} duplicate(s) ignored"
+echo "  ${DIM}Coverage: ${MEAS:-0}/$TOTAL measured${COVNOTE}${RST}"
 UML=$(echo "$REPORT" | awk -F'\t' '/^UMODEL/{printf "%s (%s) ",$2,$3}')
 [ -n "$UML" ] && echo "  ${COPPER}unmeasured models: ${UML}— price them: amiral-butin add-model <id> <in_\$/Mtok> <out_\$/Mtok>${RST}"
 [ -n "$VER" ] && [ "$VER" != "0/0" ] && echo "  ${DIM}Verified through the gate: $VER measured tasks${RST}"
 [ -n "$CHEAP" ] && echo "  ${DIM}Cheap-route success: $CHEAP${RST}"
-if [ -z "$CHEAP" ] && awk -v n="${NET:-0}" 'BEGIN{exit !(n<0.01 && n>-0.01)}'; then
-  echo "  ${DIM}Your brain and hands are on the same tier: the butin measures cost,${RST}"
-  echo "  ${DIM}not quality. Savings appear when routing crosses tiers (grunt→Haiku,${RST}"
-  echo "  ${DIM}or an Opus/Fable brain). amiral's value here is discipline + the gate.${RST}"
-fi
+# v0.14.0 (AUDIT-FABLE M8 — a specific conclusion from near-zero data): this
+# used to fire TWICE. One trigger was "no grunt tasks + net~=0", which is
+# NOT evidence of tier identity — it's evidence of NO DATA (fires on a log
+# holding a single measured brain event with workers still pending). That
+# trigger is gone. The other is core.awk's DEGENERATE flag, which at least
+# inspects actual chosen_model vs baseline — kept as the ONLY trigger, but
+# gated on real evidence before printing: >=3 measured WORKER events (brain
+# never appears in AGENTS_START..AGENTS_END, so summing that block's Tasks
+# column counts workers only) AND pending under 25% of total (materially
+# incomplete coverage can't support a tier-identity conclusion either).
+# Silence beats a wrong diagnosis.
 DEGEN=$(echo "$REPORT" | awk -F'\t' '/^DEGENERATE/{print $2}')
-[ "$DEGEN" = "1" ] && echo "  ${DIM}All tiers identical (brain = hands = baseline): the butin measures cost, not quality. Savings appear when routing crosses tiers (grunt→haiku, or an opus/fable brain).${RST}"
+if [ "$DEGEN" = "1" ]; then
+  # F5 (documented, not redesigned): WORKERS below counts EVENTS, not
+  # distinct tasks. A mixed-model worker receipt (v0.14 slice pricing)
+  # writes ONE EVENT PER MODEL for the SAME receipt, so the >=3 threshold
+  # can be met by fewer distinct tasks than the number suggests (e.g. 2
+  # tasks x 2 models each = 4 slices). Requires a worker switching models
+  # mid-task — rare. Brain is excluded from this sum either way (it never
+  # appears in AGENTS_START..AGENTS_END). Accepted: slice-inflation only
+  # ever makes this gate MORE permissive, never fabricates the diagnostic
+  # from zero data (the failure mode the gate exists to prevent).
+  WORKERS=$(echo "$REPORT" | awk -F'\t' '
+    /^AGENTS_START/{p=1;next} /^AGENTS_END/{p=0;next} p{sum+=$2} END{print sum+0}')
+  if [ "${WORKERS:-0}" -ge 3 ] && [ $((PEND * 4)) -lt "$TOTAL" ]; then
+    echo "  ${DIM}All tiers identical (brain = hands = baseline): the butin measures${RST}"
+    echo "  ${DIM}cost, not quality. Savings appear when routing crosses tiers${RST}"
+    echo "  ${DIM}(grunt→Haiku, or an Opus/Fable brain). amiral's value here is${RST}"
+    echo "  ${DIM}discipline + the gate.${RST}"
+  fi
+fi
 echo "  ${DIM}Share a row → amiral-report · estimate scenarios → amiral-savings${RST}"
 if [ "${1:-}" = "--detail" ]; then
   echo ""
@@ -163,9 +666,15 @@ if [ "${1:-}" = "--detail" ]; then
   echo "  ${DIM}• 'Same tokens': baseline rate applied to tokens actually used — an estimate, not a bill.${RST}"
   [ "$MODE" = "plan" ] && echo "  ${DIM}• Subscription plan: shown as API-equivalent value + premium tokens avoided, not cash.${RST}"
   echo "  ${DIM}• Baseline source: $BSOURCE.${RST}"
-  [ -n "$PVER" ] && echo "  ${DIM}• Pricing table version: $PVER (stamped on every event).${RST}"
+  [ -n "${PV:-}" ] && echo "  ${DIM}• Pricing table version: $PV (stamped on every event).${RST}"
+  echo "  ${DIM}• Baseline changes apply to FUTURE events only; each stored row keeps the baseline it was priced with.${RST}"
   echo "  ${DIM}• Counterfactual applies baseline rates to the DECOMPOSED token volume (each worker re-reads context) — a bias in amiral's favor; use --haircut=15 for a conservative view.${RST}"
   echo "  ${DIM}• Escalations counted against amiral (a failed cheap route can make a task net-negative — by design).${RST}"
+  echo "  ${DIM}• Attribution: headline NET counts only the agents amiral ships and routes (agents/*.md — implementer,${RST}"
+  echo "  ${DIM}  grunt, reviewer, corsaire, advisor). 'Other subagents' below is real, measured activity from${RST}"
+  echo "  ${DIM}  Claude Code's own built-ins (e.g. general-purpose, Explore) or other tooling — amiral never routed it.${RST}"
+  echo "  ${DIM}  A custom agent you define yourself also lands in 'other' — amiral didn't route that either. The brain${RST}"
+  echo "  ${DIM}  is neither bucket: its premium (a penalty only) is deducted from the amiral NET, on its own accounting.${RST}"
 fi
 [ -n "${STALE:-}" ] && echo "" && echo "$STALE"
 case "$BSOURCE" in default*|"?") echo "  ${DIM}baseline is a default — set yours once: amiral-butin init${RST}";; esac

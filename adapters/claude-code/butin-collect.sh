@@ -20,34 +20,63 @@ mkdir -p "$AMIRAL_HOME"
 
 err() { echo "$(date -u +%FT%TZ) $*" >> "$ERRLOG" 2>/dev/null; }
 
+# v0.13: refresh the statusline cache at every exit — unmeasured events
+# change coverage numbers too, so all three exit sites below call this.
+# Self-gated on the opt-in flag inside cache.sh (no-op for non-statusline
+# users); cache.sh takes its own lock.
+refresh_cache() {
+  CACHESH="$(dirname "${BASH_SOURCE[0]}")/cache.sh"
+  [ -f "$CACHESH" ] || CACHESH="$(dirname "${BASH_SOURCE[0]}")/../../lib/butin/cache.sh"
+  bash "$CACHESH" >/dev/null 2>&1 || true
+}
+
 ROLE="worker"; [ "${1:-}" = "--brain" ] && ROLE="brain"
 
 INPUT="$(cat 2>/dev/null || true)"
-TRANSCRIPT=$(echo "$INPUT" | grep -oE '"transcript_path"[ ]*:[ ]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
 SESSION=$(echo "$INPUT" | grep -oE '"session_id"[ ]*:[ ]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
-AGENT=$(echo "$INPUT" | grep -oE '"subagent_type"[ ]*:[ ]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
-[ -z "$AGENT" ] && AGENT="$ROLE"
-[ "$ROLE" = "brain" ] && AGENT="brain"
+if [ "$ROLE" = "brain" ]; then
+  # Stop hook: the main session transcript IS what we want, and agent is the brain.
+  TRANSCRIPT=$(echo "$INPUT" | grep -oE '"transcript_path"[ ]*:[ ]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
+  AGENT="brain"
+else
+  # SubagentStop delivers agent_type + agent_transcript_path (NOT subagent_type/transcript_path).
+  TRANSCRIPT=$(echo "$INPUT" | grep -oE '"agent_transcript_path"[ ]*:[ ]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
+  AGENT=$(echo "$INPUT" | grep -oE '"agent_type"[ ]*:[ ]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
+  [ -z "$AGENT" ] && AGENT="worker"
+fi
 TS="$(date -u +%FT%TZ)"
 ID=$(printf '%s' "$SESSION-$AGENT-$(date +%s%N)" | shasum 2>/dev/null | awk '{print substr($1,1,12)}')
 
 # --- extract last usage block from the transcript (defensive) ---
 IN=""; OUT=""; CR=""; CW=""; MODEL=""
 if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
-  ULINE=$(grep '"input_tokens"' "$TRANSCRIPT" 2>/dev/null | tail -1)
-  IN=$(echo "$ULINE"  | grep -oE '"input_tokens"[ ]*:[ ]*[0-9]+'                | grep -oE '[0-9]+$' | tail -1)
-  OUT=$(echo "$ULINE" | grep -oE '"output_tokens"[ ]*:[ ]*[0-9]+'               | grep -oE '[0-9]+$' | tail -1)
-  CR=$(echo "$ULINE"  | grep -oE '"cache_read_input_tokens"[ ]*:[ ]*[0-9]+'     | grep -oE '[0-9]+$' | tail -1)
-  CW=$(echo "$ULINE"  | grep -oE '"cache_creation_input_tokens"[ ]*:[ ]*[0-9]+' | grep -oE '[0-9]+$' | tail -1)
-  MODEL=$(grep -oE '"model"[ ]*:[ ]*"[^"]*"' "$TRANSCRIPT" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/')
+  # H10: sum EVERY assistant usage block, not just the last turn.
+  # C2: take the model from the assistant lines that carry usage, not a
+  #     global tail -1 (which could catch an unrelated later model string).
+  # Only assistant messages have message.usage; awk keeps model + running sums together.
+  read -r IN OUT CR CW MODEL <<AWKEOF
+$(awk '
+    /"usage"/ && /"input_tokens"/ {
+      i=o=cr=cw=0; m=""
+      if (match($0,/"input_tokens"[ ]*:[ ]*[0-9]+/))               { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); i=s }
+      if (match($0,/"output_tokens"[ ]*:[ ]*[0-9]+/))              { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); o=s }
+      if (match($0,/"cache_read_input_tokens"[ ]*:[ ]*[0-9]+/))    { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); cr=s }
+      if (match($0,/"cache_creation_input_tokens"[ ]*:[ ]*[0-9]+/)){ s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); cw=s }
+      if (match($0,/"model"[ ]*:[ ]*"[^"]*"/))                     { m=substr($0,RSTART,RLENGTH); sub(/^.*"model"[ ]*:[ ]*"/,"",m); sub(/".*$/,"",m) }
+      ti+=i; to+=o; tcr+=cr; tcw+=cw; if (m!="") lm=m
+    }
+    END { printf "%d %d %d %d %s", ti+0, to+0, tcr+0, tcw+0, lm }
+  ' "$TRANSCRIPT")
+AWKEOF
 fi
-CR=${CR:-0}; CW=${CW:-0}
+CR=${CR:-0}; CW=${CW:-0}; IN=${IN:-}; OUT=${OUT:-}
 
 # --- unmeasured path: never invent ---
 if [ -z "$IN" ] || [ -z "$OUT" ] || [ -z "$MODEL" ]; then
   LINE="{\"v\":1,\"id\":\"$ID\",\"ts\":\"$TS\",\"agent\":\"$AGENT\",\"model\":\"${MODEL:-unknown}\",\"unmeasured\":true}"
   printf '%s\n' "$LINE" >> "$LOG"
   err "unmeasured event ($AGENT): transcript=$TRANSCRIPT in=$IN out=$OUT model=$MODEL"
+  refresh_cache
   exit 0
 fi
 
@@ -59,7 +88,7 @@ PVER=$(grep -oE 'pricing_version: [0-9-]+' "$PRICES" | head -1 | awk '{print $2}
 CHOSEN_R=$(rates "$MODEL"); BASE_R=$(rates "$BASE")
 if [ -z "$CHOSEN_R" ] || [ -z "$BASE_R" ]; then
   LINE="{\"v\":1,\"id\":\"$ID\",\"ts\":\"$TS\",\"agent\":\"$AGENT\",\"model\":\"${MODEL:-unknown}\",\"unmeasured\":true}"
-  printf '%s\n' "$LINE" >> "$LOG"; err "unknown pricing_id: chosen=$MODEL base=$BASE"; exit 0
+  printf '%s\n' "$LINE" >> "$LOG"; err "unknown pricing_id: chosen=$MODEL base=$BASE"; refresh_cache; exit 0
 fi
 
 # --- category-by-category costs (rule A2) ---
@@ -92,22 +121,33 @@ fi
 # previous event in THIS session ran on a cheaper model (out-rate), was
 # grunt or the same agent, and finished < 15 min ago, this event is the
 # escalation and the wasted cheap attempt is charged as extra cost.
-OUTCOME="ok"; ESCX=0
+OUTCOME="ok"; ESCX=0; ESCCFVOID=0
 STATE="$AMIRAL_HOME/state/last-$SESSION"
 mkdir -p "$AMIRAL_HOME/state"
 if [ -f "$STATE" ] && [ "$ROLE" != "brain" ]; then
-  IFS=$'\t' read -r PAG PMODEL PREAL PEPOCH PRATE < "$STATE" || true
-  NOW=$(date +%s); GAP=$(( NOW - ${PEPOCH:-0} ))
+  IFS=$'\t' read -r PAG PMODEL PREAL PEPOCH PRATE PCF PID < "$STATE" || true
+  case "${PEPOCH:-}" in (*[!0-9]*|"") PEPOCH=0;; esac
+  NOW=$(date +%s); GAP=$(( NOW - PEPOCH ))
   PRICIER=$(awk -v a="${PRATE:-0}" -v b="$RO" 'BEGIN{print (b>a)?1:0}')
   if [ "$GAP" -lt 900 ] && [ "$PRICIER" = "1" ] && { [ "$PAG" = "grunt" ] || [ "$PAG" = "$AGENT" ]; }; then
-    OUTCOME="escalated"; ESCX="$PREAL"
+    OUTCOME="escalated"; ESCX="$PREAL"; ESCCFVOID="${PCF:-0}"
+    # mark the failed cheap attempt E1 as superseded (by id), so core.awk
+    # excludes it from both real_sum and cf_sum (H8). The marker carries a
+    # ts: date-sliced passes (statusline today-cache) must see it too, or an
+    # escalation day would render as a fabricated positive. A marker whose
+    # target sits outside the slice is a no-op in core.awk (tgt not seen).
+    [ -n "${PID:-}" ] && printf '{"v":1,"id":"%s","ts":"%s","supersedes":"%s","outcome":"superseded_marker"}\n' "supsede-$PID" "$TS" "$PID" >> "$LOG"
   fi
 fi
-[ "$ROLE" != "brain" ] && printf '%s\t%s\t%s\t%s\t%s\n' "$AGENT" "$MODEL" "$REAL" "$(date +%s)" "$RO" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
+if [ "$ROLE" != "brain" ]; then
+  STMP=$(mktemp "$STATE.tmp.XXXXXX" 2>/dev/null || echo "$STATE.tmp.$$")
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$AGENT" "$MODEL" "$REAL" "$(date +%s)" "$RO" "$CF" "$ID" > "$STMP" && mv "$STMP" "$STATE"
+fi
 
 PVER=$(grep -oE "pricing_version: [0-9-]+" "$PRICES" 2>/dev/null | awk '{print $2}')
-LINE="{\"v\":1,\"id\":\"$ID\",\"ts\":\"$TS\",\"pricing_version\":\"${PVER:-unknown}\",\"agent\":\"$AGENT\",\"chosen_model\":\"$MODEL\",\"tokens\":{\"in\":$IN,\"out\":$OUT,\"cache_read\":$CR,\"cache_write\":$CW},\"real_cost_usd\":$REAL,\"baseline_model\":\"$BASE\",\"counterfactual_cost_usd\":$CF,\"outcome\":\"$OUTCOME\",\"escalation_extra_usd\":$ESCX,\"pricing_version\":\"$PVER\",\"verified\":$VERIF,\"prem_in_avoided\":$PIA,\"prem_out_avoided\":$POA}"
+LINE="{\"v\":1,\"id\":\"$ID\",\"ts\":\"$TS\",\"pricing_version\":\"${PVER:-unknown}\",\"agent\":\"$AGENT\",\"chosen_model\":\"$MODEL\",\"tokens\":{\"in\":$IN,\"out\":$OUT,\"cache_read\":$CR,\"cache_write\":$CW},\"real_cost_usd\":$REAL,\"baseline_model\":\"$BASE\",\"counterfactual_cost_usd\":$CF,\"outcome\":\"$OUTCOME\",\"escalation_extra_usd\":$ESCX,\"escalation_cf_void_usd\":$ESCCFVOID,\"verified\":$VERIF,\"prem_in_avoided\":$PIA,\"prem_out_avoided\":$POA}"
 
 # atomic append: single write, guaranteed < PIPE_BUF (line is ~400 chars)
 [ ${#LINE} -lt 4000 ] && printf '%s\n' "$LINE" >> "$LOG" || err "line too long, dropped ($AGENT)"
+refresh_cache
 exit 0

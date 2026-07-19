@@ -80,13 +80,27 @@ cp "$REPO_DIR/bin/amiral-butin" "$CLAUDE_DIR/amiral-butin"
 chmod +x "$CLAUDE_DIR/amiral-butin"
 mkdir -p "$CLAUDE_DIR/butin"
 cp "$REPO_DIR/lib/butin/core.awk" "$CLAUDE_DIR/butin/core.awk"
+cp "$REPO_DIR/lib/butin/agents.sh" "$CLAUDE_DIR/butin/agents.sh"
+cp "$REPO_DIR/lib/butin/amiral-agents.txt" "$CLAUDE_DIR/butin/amiral-agents.txt"
 cp "$REPO_DIR/lib/butin/pricing.tsv" "$CLAUDE_DIR/butin/pricing.tsv"
+cp "$REPO_DIR/adapters/claude-code/butin-receipt.sh" "$CLAUDE_DIR/butin/butin-receipt.sh"
+chmod +x "$CLAUDE_DIR/butin/butin-receipt.sh"
+cp "$REPO_DIR/lib/butin/measure.py" "$CLAUDE_DIR/butin/measure.py"
+cp "$REPO_DIR/lib/butin/backfill.py" "$CLAUDE_DIR/butin/backfill.py"
 cp "$REPO_DIR/adapters/claude-code/butin-collect.sh" "$CLAUDE_DIR/butin/butin-collect.sh"
 cp "$REPO_DIR/adapters/claude-code/adapter.sh" "$CLAUDE_DIR/butin/adapter.sh"
 chmod +x "$CLAUDE_DIR/butin/butin-collect.sh"
 cp "$REPO_DIR/bin/amiral-journal" "$CLAUDE_DIR/amiral-journal"
 chmod +x "$CLAUDE_DIR/amiral-journal"
 echo "  ok  amiral-butin (+ core, collector, journal)"
+
+# statusline (v0.13): opt-in, wired via `amiral statusline install`
+cp "$REPO_DIR/bin/amiral-statusline" "$CLAUDE_DIR/butin/amiral-statusline.sh"
+chmod +x "$CLAUDE_DIR/butin/amiral-statusline.sh"
+cp "$REPO_DIR/bin/amiral-statusline.ps1" "$CLAUDE_DIR/butin/amiral-statusline.ps1"
+cp "$REPO_DIR/lib/butin/cache.sh" "$CLAUDE_DIR/butin/cache.sh"
+chmod +x "$CLAUDE_DIR/butin/cache.sh"
+echo "  ok  butin statusline (renderer + cache producer — opt-in, not wired yet)"
 
 case "${SHELL:-}" in
   */zsh) RC_FILE="~/.zshrc" ;;
@@ -129,5 +143,7 @@ Fleet config (env): AMIRAL_BRAIN (default opus), AMIRAL_HANDS (default sonnet)
   Defaults: brain=opus (included on Max; Pro serves Sonnet in-plan),
   hands=sonnet. On Pro and want all-Sonnet? use  amiral-solo
   Want the premium planning brain?  AMIRAL_BRAIN=fable amiral
+
+Statusline is opt-in — amiral statusline install (backs up + restores any existing statusline)
 ============================================================
 EOF

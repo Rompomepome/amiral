@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Shell syntax
-        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh bin/amiral-doctor bin/amiral-trust bin/amiral-setup bin/amiral-savings bin/amiral-report bin/amiral-butin bin/amiral-journal adapters/claude-code/butin-collect.sh hooks/subagent-verify.sh
+        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh bin/amiral-doctor bin/amiral-trust bin/amiral-setup bin/amiral-savings bin/amiral-report bin/amiral-butin bin/amiral-journal bin/amiral-statusline lib/butin/cache.sh lib/butin/agents.sh adapters/claude-code/butin-collect.sh adapters/claude-code/butin-receipt.sh hooks/subagent-verify.sh
 
       - name: Plugin manifests are valid JSON
         run: |
@@ -31,6 +31,14 @@ jobs:
           diff -r agents .claude/agents
           diff -r skills .claude/skills
 
+      - name: amiral-agents manifest matches agents/
+        # butin's NET headline must only ever credit the agents amiral
+        # actually ships (agents/*.md) — this manifest is core.awk's
+        # AMIRAL_AGENTS source of truth (lib/butin/amiral-agents.txt);
+        # a drift here would silently re-widen or narrow attribution.
+        run: |
+          diff <(sort lib/butin/amiral-agents.txt) <(ls agents/*.md | xargs -n1 basename | sed 's/\.md$//' | sort)
+
       - name: Fresh install
         run: |
           export HOME=$(mktemp -d)
@@ -41,6 +49,9 @@ jobs:
           test -f "$HOME/.claude/agents/reviewer.md"
           test -f "$HOME/.claude/agents/corsaire.md"
           test -f "$HOME/.claude/agents/advisor.md"
+          test -f "$HOME/.claude/butin/core.awk"
+          test -f "$HOME/.claude/butin/agents.sh"
+          test -f "$HOME/.claude/butin/amiral-agents.txt"
           test -f "$HOME/.claude/skills/plan-ship/SKILL.md"
           test -f "$HOME/.claude/amiral-profiles.sh"
           test -f "$HOME/.claude/amiral-profiles.ps1"
@@ -110,6 +121,37 @@ jobs:
       - name: Butin critical-path battery
         run: bash tests/test-butin.sh
 
+      - name: Statusline battery
+        run: bash tests/test-statusline.sh
+
+      - name: Journal battery
+        run: bash tests/test-journal.sh
+
       - name: No dangerous flags shipped
         run: |
           ! grep -R -- "--dangerously-skip-permissions" shell/ install.sh agents/ skills/
+
+      - name: No dead provenance trailers in user-facing docs
+        # v0.14.0 removed Amiral-Verified (forgeable) and renamed
+        # Amiral-Attest -> Amiral-Diff-Digest. The README advertising a
+        # trailer the code no longer emits is itself a false provenance
+        # claim (corsaire, v0.14.0) — fail CI if docs re-diverge.
+        # READMEs only: docs/butin-spec-v2.md legitimately states the
+        # NEGATIVE ("there is no Amiral-Verified trailer") — that honest
+        # mention must not trip the guard.
+        run: |
+          ! grep -n "Amiral-Verified\|Amiral-Attest" README.md README.fr.md
+
+  # BSD userland coverage: every stat -c || stat -f and date -d || date -j
+  # chain only exercises its GNU branch on ubuntu. macOS runs the BSD side
+  # (and Apple's bash 3.2), where past audits found real breaks.
+  batteries-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Butin critical-path battery (BSD userland)
+        run: bash tests/test-butin.sh
+      - name: Statusline battery (BSD userland)
+        run: bash tests/test-statusline.sh
+      - name: Journal battery (BSD userland)
+        run: bash tests/test-journal.sh
