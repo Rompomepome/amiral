@@ -126,6 +126,11 @@ ships. Board only what you need; read any of them in five minutes.
   plan, new default model)? `amiral-butin config` sets it directly, no
   detection — changes apply to future events only, history keeps the
   baseline it was priced with. Wire the collector once: [docs/butin.md](docs/butin.md).
+  The headline NET only ever credits agents amiral actually ships and
+  routes (`agents/*.md`); a subagent Claude Code spawns on its own (or
+  any custom agent you define) is measured too but shown on its own
+  clearly-labelled line, never mixed into the amiral figure. The brain
+  keeps its own premium accounting, separate from both.
 - **journal de bord** (prove) — `amiral-journal enable`: opt-in git
   trailers per repo — `Amiral-Route` and `Amiral-Diff-Digest` (a
   recomputable digest of verify.sh's bytes + the commit's diff — proves

@@ -819,5 +819,32 @@ else
   ko "T-S23c out=[$OUT]"
 fi
 
+# ─── T-S24 (v0.15): a foreign subagent must NOT inflate net_total. cache.sh
+# now passes AMIRAL_AGENTS (the real agents/*.md manifest, via lib/butin/
+# agents.sh) into core.awk, same as bin/amiral-butin. A "general-purpose"
+# event (a Claude Code built-in, never amiral-routed) carries a huge
+# counterfactual gap on purpose — if it leaked into net_total the assertion
+# below would catch it immediately (0.22 mixed vs 0.04 amiral-only). ───
+H24="$(mktemp -d)"
+touch "$H24/statusline-on"
+printf '{ "baseline_model": "claude-opus-4-8", "baseline_source": "test", "mode": "api" }\n' > "$H24/butin-config.json"
+{
+  printf '{"v":1,"id":"s24-1","agent":"grunt","real_cost_usd":0.01,"counterfactual_cost_usd":0.05,"outcome":"ok"}\n'
+  printf '{"v":1,"id":"s24-2","agent":"general-purpose","real_cost_usd":0.02,"counterfactual_cost_usd":0.20,"outcome":"ok"}\n'
+} > "$H24/butin.jsonl"
+AMIRAL_HOME="$H24" bash "$CACHESH"
+NET24=$(awk -F'\t' '$1=="net_total"{print $2}' "$H24/butin-cache.tsv" 2>/dev/null)
+OTHER24=$(awk -F'\t' '$1=="other_net_total"{print $2}' "$H24/butin-cache.tsv" 2>/dev/null)
+if [ -n "$NET24" ] && awk -v n="$NET24" 'BEGIN{exit !(n>0.0399 && n<0.0401)}'; then
+  ok "T-S24a net_total is amiral-only (grunt's 0.04, general-purpose's 0.18 excluded): $NET24"
+else
+  ko "T-S24a net_total=$NET24 (want ~0.04 — a foreign agent leaked into the amiral figure)"
+fi
+if [ -n "$OTHER24" ] && awk -v n="$OTHER24" 'BEGIN{exit !(n>0.1799 && n<0.1801)}'; then
+  ok "T-S24b other_net_total carries the foreign agent's real, measured contribution (0.18): $OTHER24"
+else
+  ko "T-S24b other_net_total=$OTHER24 (want ~0.18)"
+fi
+
 echo ""; echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

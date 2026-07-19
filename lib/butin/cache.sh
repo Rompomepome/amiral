@@ -17,6 +17,8 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE="$HERE/core.awk"
 MEASURE="$HERE/measure.py"
+AGENTS_SH="$HERE/agents.sh"
+[ -f "$AGENTS_SH" ] || AGENTS_SH="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/agents.sh"
 
 AMIRAL_HOME="${AMIRAL_HOME:-$HOME/.amiral}"
 LOG="$AMIRAL_HOME/butin.jsonl"
@@ -90,9 +92,16 @@ if [ -f "$CONFIG" ]; then
   T=$(grep -oE '"baseline_model"[ ]*:[ ]*"[^"]*"' "$CONFIG" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/'); [ -n "$T" ] && BASELINE="$T"
 fi
 
+# v0.15: amiral-attributed agent set (agents/*.md) — same manifest as
+# bin/amiral-butin, sourced once, so net_total/net_today in the cache
+# (and the statusline they feed) never mix in subagents amiral didn't route.
+AMIRAL_AGENTS=""
+[ -f "$AGENTS_SH" ] && . "$AGENTS_SH"
+command -v amiral_agents_csv >/dev/null 2>&1 && AMIRAL_AGENTS="$(amiral_agents_csv "$HERE/amiral-agents.txt")"
+
 # --- compute: core.awk is the only calculator, run TWICE (full log + a
 # today-filtered slice). No date logic lives inside core.awk itself. ---
-FULL=$(awk -v MODE="$MODE" -f "$CORE" < "$LOG" 2>/dev/null)
+FULL=$(awk -v MODE="$MODE" -v AMIRAL_AGENTS="$AMIRAL_AGENTS" -f "$CORE" < "$LOG" 2>/dev/null)
 TODAY="$(date -u +%F)"
 # "today" = UTC day, matching the collector's `date -u` ts stamps; local
 # midnight would silently disagree with the data plane.
@@ -110,19 +119,26 @@ TODAY="$(date -u +%F)"
 # first cold pass — verified live during implementation. Same tolerant
 # `[ ]*` idiom already used everywhere else in this codebase for JSON
 # field extraction (bin/amiral-butin, butin-collect.sh).
-TODAY_REPORT=$( (grep -E "\"ts\"[ ]*:[ ]*\"$TODAY" "$LOG" 2>/dev/null || true) | awk -v MODE="$MODE" -f "$CORE" 2>/dev/null)
+TODAY_REPORT=$( (grep -E "\"ts\"[ ]*:[ ]*\"$TODAY" "$LOG" 2>/dev/null || true) | awk -v MODE="$MODE" -v AMIRAL_AGENTS="$AMIRAL_AGENTS" -f "$CORE" 2>/dev/null)
 
 NET_TOTAL=$(echo "$FULL" | awk -F'\t' '/^NET/{print $2}')
 PREM_TOTAL=$(echo "$FULL" | awk -F'\t' '/^PREM_AVOIDED/{print $2}')
 MEASURED=$(echo "$FULL" | awk -F'\t' '/^MEASURED/{print $2}')
 UNMEASURED=$(echo "$FULL" | awk -F'\t' '/^UNMEASURED/{print $2}')
+# v0.15: "other" subagents (not amiral-routed) — extra keys, unknown to
+# readers that predate this field (they ignore it; see the cache format
+# note above the TMP write below). The statusline keeps rendering
+# net_total/net_today (amiral-only) — these are informational only.
+OTHER_NET_TOTAL=$(echo "$FULL" | awk -F'\t' '/^OTHER_NET/{print $2}')
 
 NET_TODAY=$(echo "$TODAY_REPORT" | awk -F'\t' '/^NET/{print $2}')
 PREM_TODAY=$(echo "$TODAY_REPORT" | awk -F'\t' '/^PREM_AVOIDED/{print $2}')
 ESC_TODAY=$(echo "$TODAY_REPORT" | awk -F'\t' '/^ESC/{print $2}')
+OTHER_NET_TODAY=$(echo "$TODAY_REPORT" | awk -F'\t' '/^OTHER_NET/{print $2}')
 
 : "${NET_TOTAL:=0}"; : "${PREM_TOTAL:=0}"; : "${MEASURED:=0}"; : "${UNMEASURED:=0}"
 : "${NET_TODAY:=0}"; : "${PREM_TODAY:=0}"; : "${ESC_TODAY:=0}"
+: "${OTHER_NET_TOTAL:=0}"; : "${OTHER_NET_TODAY:=0}"
 
 # PENDING = receipts still awaiting measurement, EXCLUDING any whose id is
 # already a measured event in the log. That exclusion matters: measure.py
@@ -172,6 +188,11 @@ TMP="$AMIRAL_HOME/butin-cache.tsv.tmp.$$"
   printf 'unmeasured\t%s\n' "$UNMEASURED"
   printf 'pending\t%s\n' "$PENDING"
   printf 'esc_today\t%s\n' "$ESC_TODAY"
+  # v0.15: "other" subagents (not amiral-routed) — informational only, an
+  # extra key existing readers ignore. The statusline itself keeps reading
+  # net_total/net_today (amiral-only); nothing renders the mixed total.
+  printf 'other_net_total\t%s\n' "$OTHER_NET_TOTAL"
+  printf 'other_net_today\t%s\n' "$OTHER_NET_TODAY"
 } > "$TMP" 2>/dev/null && mv "$TMP" "$CACHE" 2>/dev/null
 
 rm -f "$TMP" 2>/dev/null || true

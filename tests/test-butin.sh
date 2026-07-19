@@ -1088,5 +1088,71 @@ else
 fi
 
 
+# ─── v0.15 attribution split: NET must never credit amiral for subagent
+# activity it did not route (Claude Code built-ins, other tooling, a
+# user's own custom agent). AMIRAL_AGENTS partitions core.awk's output;
+# unset/empty must stay byte-identical to the pre-v0.15 mixed accounting
+# (legacy safety — every existing caller above never passes it). ───
+cat > "$AMIRAL_HOME/attrib.jsonl" << 'EOF'
+{"v":1,"id":"at1","agent":"grunt","real_cost_usd":0.01,"counterfactual_cost_usd":0.05,"outcome":"ok"}
+{"v":1,"id":"at2","agent":"implementer","real_cost_usd":0.02,"counterfactual_cost_usd":0.10,"outcome":"ok"}
+{"v":1,"id":"at3","agent":"general-purpose","real_cost_usd":0.03,"counterfactual_cost_usd":0.09,"outcome":"ok"}
+{"v":1,"id":"at4","agent":"Explore","chosen_model":"claude-haiku-4-5","real_cost_usd":0.01,"baseline_model":"claude-sonnet-4-6","counterfactual_cost_usd":0.02,"outcome":"escalated","escalation_extra_usd":0.005}
+{"v":1,"id":"at5","agent":"fullstack-dev","real_cost_usd":0.02,"counterfactual_cost_usd":0.05,"outcome":"ok"}
+{"v":1,"id":"at6","agent":"brain","real_cost_usd":0.05,"counterfactual_cost_usd":0.01,"outcome":"ok"}
+EOF
+ATTRIB_REPORT=$(awk -v AMIRAL_AGENTS="grunt,implementer,reviewer,corsaire,advisor" -f "$HERE/lib/butin/core.awk" "$AMIRAL_HOME/attrib.jsonl")
+A_NET=$(echo "$ATTRIB_REPORT" | awk -F'\t' '/^NET/{print $2}')
+A_ONET=$(echo "$ATTRIB_REPORT" | awk -F'\t' '/^OTHER_NET/{print $2}')
+A_OTASKS=$(echo "$ATTRIB_REPORT" | awk -F'\t' '/^OTHER_TASKS/{print $2}')
+A_AGENTS_BLOCK=$(echo "$ATTRIB_REPORT" | awk '/^AGENTS_START/{p=1;next} /^AGENTS_END/{p=0;next} p')
+A_OTHER_BLOCK=$(echo "$ATTRIB_REPORT" | awk '/^OTHER_START/{p=1;next} /^OTHER_END/{p=0;next} p')
+if awk "BEGIN{exit !($A_NET>0.079 && $A_NET<0.081)}"; then
+  ok "V15 NET excludes foreign+custom agents (amiral-only: (0.15-0.03)-0-0.04=0.08, net=$A_NET)"
+else
+  ko "V15 NET wrong: $A_NET (want ~0.08)"
+fi
+if awk "BEGIN{exit !($A_ONET>0.0949 && $A_ONET<0.0951)}"; then
+  ok "V15 OTHER_NET includes foreign+custom exactly ((0.16-0.06)-0.005=0.095, other_net=$A_ONET)"
+else
+  ko "V15 OTHER_NET wrong: $A_ONET (want ~0.095)"
+fi
+[ "${A_OTASKS:-0}" = "3" ] && ok "V15 OTHER_TASKS counts the 3 non-amiral worker events" || ko "V15 OTHER_TASKS=$A_OTASKS (want 3)"
+if echo "$A_AGENTS_BLOCK" | grep -q '^grunt' && echo "$A_AGENTS_BLOCK" | grep -q '^implementer' \
+   && ! echo "$A_AGENTS_BLOCK" | grep -qE '^(general-purpose|Explore|fullstack-dev)'; then
+  ok "V15 AGENTS_START holds only amiral agents (grunt, implementer)"
+else
+  ko "V15 AGENTS_START wrong: [$A_AGENTS_BLOCK]"
+fi
+if echo "$A_OTHER_BLOCK" | grep -q '^general-purpose' && echo "$A_OTHER_BLOCK" | grep -q '^Explore' \
+   && echo "$A_OTHER_BLOCK" | grep -q '^fullstack-dev' && ! echo "$A_OTHER_BLOCK" | grep -qE '^(grunt|implementer)'; then
+  ok "V15 OTHER_START holds the foreign built-ins + the unknown custom agent, never amiral's own"
+else
+  ko "V15 OTHER_START wrong: [$A_OTHER_BLOCK]"
+fi
+# brain premium (0.05-0.01=0.04) still deducted from the amiral NET only —
+# already asserted above (0.08 bakes it in); confirm the BRAIN row itself too.
+A_BRAIN=$(echo "$ATTRIB_REPORT" | awk -F'\t' '/^BRAIN/{print $3}')
+awk "BEGIN{exit !($A_BRAIN>0.0399 && $A_BRAIN<0.0401)}" && ok "V15 brain premium still charged (0.04, neither bucket)" || ko "V15 brain premium=$A_BRAIN"
+
+# legacy safety: no AMIRAL_AGENTS at all -> byte-identical to the OLD mixed
+# NET (every worker, foreign included, all counted as amiral — the exact
+# pre-v0.15 behavior every existing caller above still gets).
+LEGACY_REPORT=$(awk -f "$HERE/lib/butin/core.awk" "$AMIRAL_HOME/attrib.jsonl")
+L_NET=$(echo "$LEGACY_REPORT" | awk -F'\t' '/^NET/{print $2}')
+# all non-brain real=0.09, cf=0.31, gross=0.22, esc=0.005, brain=0.04 -> net=0.175
+if awk "BEGIN{exit !($L_NET>0.1749 && $L_NET<0.1751)}"; then
+  ok "V15 legacy (no AMIRAL_AGENTS) reproduces the OLD mixed NET (0.175, no split)"
+else
+  ko "V15 legacy NET wrong: $L_NET (want ~0.175)"
+fi
+L_OTASKS=$(echo "$LEGACY_REPORT" | awk -F'\t' '/^OTHER_TASKS/{print $2}')
+[ "${L_OTASKS:-x}" = "0" ] && ok "V15 legacy OTHER_TASKS=0 (split is a no-op when unset)" || ko "V15 legacy OTHER_TASKS=$L_OTASKS"
+
+# manifest == agents/ (mirrors the CI guard; catches drift locally too)
+MANIFEST_DIFF=$(diff <(sort "$HERE/lib/butin/amiral-agents.txt") <(ls "$HERE"/agents/*.md | xargs -n1 basename | sed 's/\.md$//' | sort))
+[ -z "$MANIFEST_DIFF" ] && ok "V15 lib/butin/amiral-agents.txt matches agents/*.md exactly" || ko "V15 manifest drift: $MANIFEST_DIFF"
+
+
 echo ""; echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

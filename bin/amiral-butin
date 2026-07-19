@@ -12,6 +12,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CORE="$HERE/lib/butin/core.awk"
 # locate core when installed (copied next to the script)
 [ -f "$CORE" ] || CORE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk"
+# v0.15: amiral-attributed agent set (agents/*.md) — partitions NET/GROSS
+# away from subagents amiral never routed (Claude Code built-ins, custom
+# agents). agents.sh is a sibling of core.awk in both layouts.
+AGENTS_SH="$HERE/lib/butin/agents.sh"
+[ -f "$AGENTS_SH" ] || AGENTS_SH="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/agents.sh"
+[ -f "$AGENTS_SH" ] && . "$AGENTS_SH"
+AMIRAL_AGENTS=""
+command -v amiral_agents_csv >/dev/null 2>&1 && AMIRAL_AGENTS="$(amiral_agents_csv "$HERE/lib/butin/amiral-agents.txt")"
 
 # colors (respect NO_COLOR + --no-color)
 if [ -n "${NO_COLOR:-}" ] || [ "${1:-}" = "--no-color" ]; then
@@ -535,7 +543,7 @@ fi
 # run the universal core
 HAIRCUT=0
 for a in "$@"; do case "$a" in --haircut=*) HAIRCUT="${a#--haircut=}";; esac; done
-REPORT=$(awk -v MODE="$MODE" -v HAIRCUT="$HAIRCUT" -f "$CORE" < "$LOG" 2>/dev/null)
+REPORT=$(awk -v MODE="$MODE" -v HAIRCUT="$HAIRCUT" -v AMIRAL_AGENTS="$AMIRAL_AGENTS" -f "$CORE" < "$LOG" 2>/dev/null)
 
 NET=$(echo "$REPORT" | awk -F'\t' '/^NET/{print $2}')
 GROSS=$(echo "$REPORT" | awk -F'\t' '/^GROSS/{print $2}')
@@ -545,6 +553,11 @@ ESC=$(echo "$REPORT" | awk -F'\t' '/^ESC/{print $2"\t"$3}')
 ESC_N=$(echo "$ESC" | cut -f1); ESC_C=$(echo "$ESC" | cut -f2)
 CHEAP=$(echo "$REPORT" | awk -F'\t' '/^CHEAP_RATE/{print $2"/"$3}')
 BAD=$(echo "$REPORT" | awk -F'\t' '/^BAD_LINES/{print $2}')
+# v0.15: "other" bucket — subagents amiral did NOT route (Claude Code
+# built-ins, or a user's own custom agent). Measured, but never counted
+# into the amiral-attributed NET/GROSS above.
+OTHER_NET=$(echo "$REPORT" | awk -F'\t' '/^OTHER_NET/{print $2}')
+OTHER_TASKS=$(echo "$REPORT" | awk -F'\t' '/^OTHER_TASKS/{print $2}')
 
 PV=$(grep -oE 'pricing_version: [0-9-]+' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/pricing.tsv" "$HERE/lib/butin/pricing.tsv" 2>/dev/null | head -1 | awk '{print $2}')
 if [ -n "$PV" ]; then
@@ -577,6 +590,20 @@ if [ "$MODE" = "plan" ]; then
 else
   netcol="$GREEN"; case "$NET" in -*) netcol="$COPPER";; esac
   printf "  %-20s ${BOLD}${netcol}%+.2f \$${RST}\n" "Net saved" "${NET:-0}"
+fi
+
+# v0.15: "other" subagents — real, measured activity amiral never routed
+# (a Claude Code built-in like general-purpose/Explore, or the user's own
+# custom agent). Kept OUT of the hero NET above; shown here, dim/copper,
+# clearly labelled, never mixed into "Net saved".
+if [ "${OTHER_TASKS:-0}" != "0" ] && [ -n "$OTHER_TASKS" ]; then
+  echo ""
+  echo "  ${DIM}Other subagents (not amiral-routed):${RST}"
+  echo "$REPORT" | awk -v D="$DIM" -v R="$RST" '
+    /^OTHER_START/{p=1;next} /^OTHER_END/{p=0;next}
+    p{ printf "  %s%-13s %7d  %9.4f  %13.4f  %+9.4f%s\n",D,$1,$2,$3,$4,$5,R }'
+  othercol="$DIM"; case "$OTHER_NET" in -*) othercol="$COPPER";; esac
+  printf "  ${DIM}Other subagents (not amiral-routed): net %s%+.2f \$${DIM} across %s task(s) — measured, not amiral's doing${RST}\n" "$othercol" "${OTHER_NET:-0}" "${OTHER_TASKS:-0}"
 fi
 
 # cheap-route success + honesty caveats
@@ -643,6 +670,11 @@ if [ "${1:-}" = "--detail" ]; then
   echo "  ${DIM}• Baseline changes apply to FUTURE events only; each stored row keeps the baseline it was priced with.${RST}"
   echo "  ${DIM}• Counterfactual applies baseline rates to the DECOMPOSED token volume (each worker re-reads context) — a bias in amiral's favor; use --haircut=15 for a conservative view.${RST}"
   echo "  ${DIM}• Escalations counted against amiral (a failed cheap route can make a task net-negative — by design).${RST}"
+  echo "  ${DIM}• Attribution: headline NET counts only the agents amiral ships and routes (agents/*.md — implementer,${RST}"
+  echo "  ${DIM}  grunt, reviewer, corsaire, advisor). 'Other subagents' below is real, measured activity from${RST}"
+  echo "  ${DIM}  Claude Code's own built-ins (e.g. general-purpose, Explore) or other tooling — amiral never routed it.${RST}"
+  echo "  ${DIM}  A custom agent you define yourself also lands in 'other' — amiral didn't route that either. The brain${RST}"
+  echo "  ${DIM}  is neither bucket: its premium (a penalty only) is deducted from the amiral NET, on its own accounting.${RST}"
 fi
 [ -n "${STALE:-}" ] && echo "" && echo "$STALE"
 case "$BSOURCE" in default*|"?") echo "  ${DIM}baseline is a default — set yours once: amiral-butin init${RST}";; esac

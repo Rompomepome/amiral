@@ -290,6 +290,76 @@ Tests (extend test-butin.sh + test-statusline.sh):
 
 ---
 
+## 4. Attribution split — amiral vs other subagents (v0.15)
+
+Live backfill surfaced 9 subagent types across real transcripts. Only 5
+are amiral's: the ones it ships and routes (`agents/*.md` —
+`implementer`, `grunt`, `reviewer`, `corsaire`, `advisor`). The other 4
+(`general-purpose`, `Explore`, `claude-code-guide`, `frontend-specialist`)
+are Claude Code's own built-ins or other tooling — amiral never routed
+them. Summing every worker into the headline NET credited amiral for
+routing it did not perform: the single most attackable claim in the tool.
+
+**Fix**: `core.awk` partitions every worker event (and its escalation
+cost, if any) into two buckets by agent name:
+- **amiral** — the manifest in `lib/butin/amiral-agents.txt` (basenames
+  of `agents/*.md`, CI-checked to never drift from the shipped set).
+  Feeds `NET`/`GROSS`/`ESC`/`AGENTS_START..END` — unchanged field names,
+  now amiral-only.
+- **other** — everything else: a Claude Code built-in, other tooling, or
+  a user's own custom agent (custom agents amiral did not route land
+  here too — there is no third "maybe" bucket). Feeds new fields
+  `OTHER_NET`/`OTHER_TASKS`/`OTHER_REAL`/`OTHER_CF`/`OTHER_ESC`/
+  `OTHER_START..END`. Real, measured data — just not amiral's doing.
+
+The brain is **neither** bucket: its premium (a penalty only, never a
+credit — rule A4) is deducted from the amiral NET on its own accounting,
+exactly as before.
+
+**Legacy path, by construction**: `-v AMIRAL_AGENTS="…"` is empty/unset
+for any caller that doesn't pass it. `core.awk`'s membership rule is
+`member-count==0 ⇒ everyone is amiral` — so every pre-v0.15 field (agent
+rows, `ESC`, `BRAIN`, `NET`, `GROSS`, coverage counts) computes to the
+exact same values as before the split; the new fields are purely
+additive (`OTHER_*` empty/zero, `ATTRIB_OFF 1` marks the split as
+inactive). No caller needed to change to stay correct — every call site
+that turns NET into a user-facing number now opts in via
+`lib/butin/agents.sh` (a shared csv-builder, installed-then-repo lookup,
+so the manifest can't drift between them): `bin/amiral-butin`,
+`lib/butin/cache.sh` ×2, `bin/amiral-journal`'s `flag` (the badge), **and**
+the `prepare-commit-msg` hook that `amiral-journal enable --with-cost`
+generates (it sources the installed `agents.sh` at commit time — the
+`Amiral-Net-Saved:` git trailer is amiral-only too, same over-claim one
+column over).
+
+**Where it shows**:
+- `amiral-butin` report: the hero "Net saved" stays amiral-only (it
+  already was NET); a new, deliberately unbold, dim/copper line below it
+  — *"Other subagents (not amiral-routed): net ±\$X across N task(s) —
+  measured, not amiral's doing"* — with its own agent rows. `--detail`
+  spells out the rule (amiral ships vs Claude Code built-ins vs a user's
+  own custom agent vs the brain's separate accounting).
+- `butin-cache.tsv` (statusline producer): gains `other_net_total` /
+  `other_net_today`, informational only. `net_total`/`net_today` were
+  already NET and are now amiral-only for free — the statusline renderer
+  itself needed **zero changes**.
+- pavillon badge (`amiral-journal flag`): resolves the same manifest
+  before computing NET, and the task **count** on the badge is amiral-routed
+  too (sum of the `AGENTS_START` block) — advertising a mixed task count
+  next to an amiral-only net would be the same over-claim, so the "refuses
+  to lie small" gate (≥20) is on amiral-routed tasks, and other subagent
+  volume is reported on its own coverage line.
+
+**Known residual (pre-v0.15, unchanged here)**: the H8 `superseded_marker`
+rollback reverses a target event's real/cf/task contribution from its
+bucket, but does **not** reverse an `escalation_extra_usd` the same target
+carried — so an escalated-*then*-superseded event can still overstate the
+NET (or OTHER_NET) escalation deduction. Same-bucket only (no cross-bucket
+leak), and this event combination is not known to be produced upstream;
+flagged for a follow-up, not fixed in this pass.
+
+---
+
 ## Cross-cutting note
 
 All three features deliberately hang off the two files the audit already marks as the honesty chokepoints: `core.awk` (the only calculator) and `butin-collect.sh` (the only writer). Nothing in this design adds a second place where a dollar figure is computed. The audit's collector findings (wrong hook field `subagent_type` vs `agent_type`; parent vs `agent_transcript_path`; last-usage-block extraction) sit **upstream of everything here** — fix those first or the statusline will display beautifully-cached wrong numbers. See AUDIT-FABLE.md.

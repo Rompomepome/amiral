@@ -76,6 +76,26 @@ MUST, what is roadmap, and what is refused.
   PowerShell ships (`bin/amiral-statusline.ps1`, same cache format) but is
   not auto-wired — parity stays backlog, per the scope note above.
 
+## MUST — also implemented in v0.15
+- **Attribution split (amiral vs other)**: the headline NET must only
+  ever credit amiral for routing it actually performed. `core.awk`
+  partitions every worker + escalation into an **amiral** bucket (the
+  manifest `lib/butin/amiral-agents.txt` — basenames of `agents/*.md`,
+  CI-checked against the shipped agents) and an **other** bucket
+  (Claude Code built-ins like `general-purpose`/`Explore`, other
+  tooling, or a user's own custom agent — real, measured, but never
+  amiral's doing). The brain is neither bucket: its premium (a penalty
+  only) keeps deducting from the amiral NET, unchanged. `NET`/`GROSS`/
+  `ESC`/`AGENTS_START..END` are amiral-only; `OTHER_NET`/`OTHER_TASKS`/
+  `OTHER_REAL`/`OTHER_CF`/`OTHER_ESC`/`OTHER_START..END` carry the other
+  bucket. Legacy callers (no `AMIRAL_AGENTS` passed) get byte-identical
+  values on every pre-existing field — the split is opt-in by
+  construction (empty set ⇒ everyone is amiral). The report shows the
+  amiral NET as the bold hero and the other bucket as a separate,
+  clearly-labelled, dim/copper line — never merged. The statusline cache
+  and the pavillon badge (`amiral-journal flag`) resolve the same
+  manifest, so neither can display a mixed figure either.
+
 ## SHOULD (next)
 - `amiral-muster` CI action: replay verify.sh, contradict false trailers.
 - Weekly HTML digest (light/dark), N+period+coverage baked in template.

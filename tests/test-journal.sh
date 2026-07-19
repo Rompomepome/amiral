@@ -278,5 +278,57 @@ else
   ko "J-14 README(s) still reference a killed trailer: $(grep -n "Amiral-Verified\|Amiral-Attest" "$HERE/README.md" "$HERE/README.fr.md" 2>/dev/null)"
 fi
 
+# ─── J-15 (v0.15): pavillon badge NET must exclude foreign subagents. An
+# "installed" fixture (core.awk + agents.sh + amiral-agents.txt copied next
+# to each other, same layout install.sh produces) so `flag` resolves the
+# real manifest via CLAUDE_CONFIG_DIR, no repo fallback needed here. ───
+AHJ15="$(mktemp -d)"
+CCDJ15="$(mktemp -d)/.claude"; mkdir -p "$CCDJ15/butin"
+cp "$HERE/lib/butin/core.awk" "$CCDJ15/butin/core.awk"
+cp "$HERE/lib/butin/agents.sh" "$CCDJ15/butin/agents.sh"
+cp "$HERE/lib/butin/amiral-agents.txt" "$CCDJ15/butin/amiral-agents.txt"
+{
+  for i in $(seq 1 20); do
+    printf '{"v":1,"id":"j15-g%s","agent":"grunt","real_cost_usd":0.01,"counterfactual_cost_usd":0.02,"outcome":"ok"}\n' "$i"
+  done
+  # a foreign subagent with a deliberately huge counterfactual gap: if it
+  # leaked into the badge's NET, the assertion below catches it immediately
+  # (net would jump from ~0.20 to ~100.20).
+  printf '{"v":1,"id":"j15-f1","agent":"general-purpose","real_cost_usd":0.01,"counterfactual_cost_usd":100.01,"outcome":"ok"}\n'
+} > "$AHJ15/butin.jsonl"
+OUT_J15=$(AMIRAL_HOME="$AHJ15" CLAUDE_CONFIG_DIR="$CCDJ15" bash "$HERE/bin/amiral-journal" flag)
+if echo "$OUT_J15" | grep -qF 'net_%2B$0.2000'; then
+  ok "J-15 pavillon badge NET is amiral-only (0.20, foreign agent's 100 excluded)"
+else
+  ko "J-15 badge out=[$OUT_J15]"
+fi
+
+# ─── J-16 (v0.15): the `enable --with-cost` commit trailer must be amiral-only
+# too. A real installed hook + a real commit — the generated hook resolves the
+# manifest via the installed agents.sh and passes AMIRAL_AGENTS to core.awk, so
+# a foreign subagent's inflated counterfactual can never inflate the trailer. ───
+REPO_J16="$(mktemp -d)"; AHJ16="$(mktemp -d)"
+CCDJ16="$(mktemp -d)/.claude"; mkdir -p "$CCDJ16/butin"
+cp "$HERE/lib/butin/core.awk"        "$CCDJ16/butin/core.awk"
+cp "$HERE/lib/butin/agents.sh"       "$CCDJ16/butin/agents.sh"
+cp "$HERE/lib/butin/amiral-agents.txt" "$CCDJ16/butin/amiral-agents.txt"
+{
+  printf '{"v":1,"id":"j16-g1","agent":"grunt","real_cost_usd":0.01,"counterfactual_cost_usd":0.05,"outcome":"ok"}\n'
+  # foreign subagent, deliberately huge counterfactual: leaks -> trailer ~100
+  printf '{"v":1,"id":"j16-f1","agent":"general-purpose","real_cost_usd":0.01,"counterfactual_cost_usd":100.01,"outcome":"ok"}\n'
+} > "$AHJ16/butin.jsonl"
+( cd "$REPO_J16" && git init -q && echo x > f.txt \
+  && AMIRAL_HOME="$AHJ16" bash "$HERE/bin/amiral-journal" enable --with-cost >/dev/null 2>&1 )
+( cd "$REPO_J16" && git add f.txt \
+  && AMIRAL_HOME="$AHJ16" CLAUDE_CONFIG_DIR="$CCDJ16" $GIT commit -q -m "j16 test" )
+MSG_J16=$( cd "$REPO_J16" && git log -1 --format=%B )
+if echo "$MSG_J16" | grep -qF 'Amiral-Net-Saved: $0.0400' \
+   && echo "$MSG_J16" | grep -qF 'amiral-routed only' \
+   && ! echo "$MSG_J16" | grep -q '100'; then
+  ok "J-16 --with-cost commit trailer is amiral-only (0.04, foreign agent's 100 excluded)"
+else
+  ko "J-16 trailer=[$MSG_J16]"
+fi
+
 echo ""; echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

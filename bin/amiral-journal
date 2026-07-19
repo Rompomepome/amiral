@@ -8,6 +8,9 @@ set -uo pipefail
 AMIRAL_HOME="${AMIRAL_HOME:-$HOME/.amiral}"
 LOG="$AMIRAL_HOME/butin.jsonl"
 CMD="${1:-status}"
+# repo checkout, for the AMIRAL_AGENTS manifest fallback below (dev/test
+# runs before install.sh has copied anything to $CLAUDE_CONFIG_DIR).
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 repo_root() { git rev-parse --show-toplevel 2>/dev/null; }
 # corsaire-3: resolve the REAL hooks dir via `git rev-parse --git-path hooks`
@@ -140,8 +143,17 @@ fi
 HOOK
     if [ "$WITH_COST" = "1" ]; then
       cat >> "$HOOK_FILE" << 'HOOK'
-  NET=$(awk -F'\t' '/^NET/{print $2}' <(awk -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk" "$AMIRAL_HOME/butin.jsonl" 2>/dev/null) 2>/dev/null)
-  [ -n "$NET" ] && echo "Amiral-Net-Saved: \$$NET (net, escalations deducted)"
+  # amiral-attributed net only: build the agent set from the SAME shared
+  # helper every other call site uses, so this commit trailer never advertises
+  # the mixed total (the exact over-claim the report fix exists to kill) and
+  # the sanitization rule can't drift. Helper/manifest absent -> empty
+  # AMIRAL_AGENTS -> core.awk's legacy all-amiral fallback, same as everywhere.
+  AMIRAL_AGENTS=""
+  AGENTS_SH="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/agents.sh"
+  [ -f "$AGENTS_SH" ] && . "$AGENTS_SH" && command -v amiral_agents_csv >/dev/null 2>&1 \
+    && AMIRAL_AGENTS="$(amiral_agents_csv)"
+  NET=$(awk -F'\t' '/^NET/{print $2}' <(awk -v AMIRAL_AGENTS="$AMIRAL_AGENTS" -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk" "$AMIRAL_HOME/butin.jsonl" 2>/dev/null) 2>/dev/null)
+  [ -n "$NET" ] && echo "Amiral-Net-Saved: \$$NET (net, escalations deducted; amiral-routed only)"
 HOOK
     fi
     { echo '} >> "$MSG"'; echo 'exit 0'; } >> "$HOOK_FILE"
@@ -206,14 +218,30 @@ Amiral-Noted: $(date -u +%FT%TZ)"
   attest)
     echo "Amiral-Diff-Digest: sha256:$(attest_hash)  (recompute: cat verify.sh + git diff --cached | sha256 — proves what was present, not what was run)" ;;
   flag)
-    # pavillon — refuses to lie small (rule C3): >=20 measured tasks
+    # v0.15: amiral-attributed agent set — the badge must never credit
+    # amiral for subagent activity it didn't route (same manifest as
+    # bin/amiral-butin and cache.sh). Both the NET *and* the task count on
+    # the badge are amiral-routed only: advertising a mixed task count next
+    # to an amiral-only net is the same over-claim, one column over.
+    AGENTS_SH="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/agents.sh"
+    [ -f "$AGENTS_SH" ] || AGENTS_SH="$HERE/lib/butin/agents.sh"
+    AMIRAL_AGENTS=""
+    [ -f "$AGENTS_SH" ] && . "$AGENTS_SH"
+    command -v amiral_agents_csv >/dev/null 2>&1 && AMIRAL_AGENTS="$(amiral_agents_csv "$HERE/lib/butin/amiral-agents.txt")"
+    REPORT=$(awk -v AMIRAL_AGENTS="$AMIRAL_AGENTS" -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk" "$LOG" 2>/dev/null)
+    NET=$(echo "$REPORT" | awk -F'\t' '/^NET/{print $2}')
+    # AMIR_TASKS = amiral-routed measured tasks (sum of the AGENTS_START block's
+    # Tasks column — brain and other-bucket agents never appear there).
+    AMIR_TASKS=$(echo "$REPORT" | awk -F'\t' '/^AGENTS_START/{p=1;next}/^AGENTS_END/{p=0}p{s+=$2}END{print s+0}')
+    OTHER_TASKS=$(echo "$REPORT" | awk -F'\t' '/^OTHER_TASKS/{print $2}'); OTHER_TASKS=${OTHER_TASKS:-0}
     MEAS=$(grep -c '"real_cost_usd"' "$LOG" 2>/dev/null || echo 0)
-    TOTAL=$(grep -c '"agent"' "$LOG" 2>/dev/null || echo 0)
-    if [ "${MEAS:-0}" -lt 20 ]; then
-      echo "pavillon: not enough data to share honestly yet ($MEAS/20 measured tasks)."; exit 1
+    # pavillon — refuses to lie small (rule C3): >=20 AMIRAL-ROUTED tasks. The
+    # badge advertises amiral's routing, so the gate is on amiral data, not on
+    # foreign subagent volume the tool happened to also measure.
+    if [ "${AMIR_TASKS:-0}" -lt 20 ]; then
+      echo "pavillon: not enough amiral-routed data to share honestly yet ($AMIR_TASKS/20 amiral-routed tasks)."; exit 1
     fi
-    NET=$(awk -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk" "$LOG" 2>/dev/null | awk -F'\t' '/^NET/{print $2}')
-    echo "[![sailed with amiral](https://img.shields.io/badge/⚓_sailed_with_amiral-${MEAS}_tasks_·_net_%2B\$${NET}-2b4c7e)](https://github.com/Rompomepome/amiral/blob/main/BENCHMARKS.md)"
-    echo "coverage: $MEAS/$TOTAL measured · net of escalations & brain premium · methodology in BENCHMARKS.md" ;;
+    echo "[![sailed with amiral](https://img.shields.io/badge/⚓_sailed_with_amiral-${AMIR_TASKS}_amiral--routed_tasks_·_net_%2B\$${NET}-2b4c7e)](https://github.com/Rompomepome/amiral/blob/main/BENCHMARKS.md)"
+    echo "coverage: $AMIR_TASKS amiral-routed · $OTHER_TASKS other subagent task(s) measured separately · net of escalations & brain premium · methodology in BENCHMARKS.md" ;;
   *) echo "usage: amiral-journal enable [--with-cost] | disable | status | attest | note | flag"; exit 1 ;;
 esac
