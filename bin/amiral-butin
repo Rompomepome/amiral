@@ -22,6 +22,31 @@ fi
 
 mkdir -p "$AMIRAL_HOME"
 
+# --- backfill: mint worker receipts for PAST sessions' real subagent
+# transcripts (live discovery only ever scans the CURRENT session). SAME
+# rules as live discovery — hostile-path guard, stable-gate, dedup against
+# both receipts.jsonl and butin.jsonl. Mints ONLY, never measures. Must run
+# BEFORE the cold-measure pass / statusline cache below: `--dry-run` has to
+# write NOTHING at all, and routing it here (before either touches a file)
+# is what makes that true. ---
+if [ "${1:-}" = "backfill" ]; then
+  shift
+  BACKFILL="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/backfill.py"
+  [ -f "$BACKFILL" ] || BACKFILL="$HERE/lib/butin/backfill.py"
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 not found — backfill requires python3"
+    exit 1
+  fi
+  if [ ! -f "$BACKFILL" ]; then
+    echo "backfill.py not found — looked for:"
+    echo "  ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/backfill.py"
+    echo "  $HERE/lib/butin/backfill.py"
+    exit 1
+  fi
+  python3 "$BACKFILL" "$@"
+  exit $?
+fi
+
 # v0.12: measure pending receipts from now-stable transcripts (cold pass).
 MEASURE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/measure.py"
 [ -f "$MEASURE" ] || MEASURE="$HERE/lib/butin/measure.py"

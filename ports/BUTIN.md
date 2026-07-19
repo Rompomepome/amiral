@@ -8,7 +8,7 @@ an invented number to compensate.
 | Capability | Required | Role | Fallback if absent |
 | --- | --- | --- | --- |
 | `task_event` | yes | agent, chosen model, tokens in/out/cache, duration | — (without it there's nothing to measure) |
-| `pricing_id` | yes | a model id resolvable in the multi-provider price table | — |
+| `pricing_id` | yes | a model id resolvable in the multi-provider price table (see "dated model ids" below) | — |
 | `history_scan` | no | access to prior logs for baseline auto-detection | default baseline declared by the adapter (conservative, cheapest plausible) |
 | `plan_detect` | no | API vs subscription/plan | API mode (real dollars) |
 | `quota_snapshot` | no | % of windows/limits at task time | quota-mode metrics omitted |
@@ -27,6 +27,21 @@ which harness produced them.
   "counterfactual_cost_usd": 0.0, "outcome": "ok|retry|escalated",
   "escalation_extra_usd": 0.0, "prem_in_avoided": 0, "prem_out_avoided": 0 }
 ```
+
+## Dated model ids
+
+The platform sometimes reports a `pricing_id` with a trailing date, e.g.
+`claude-haiku-4-5-20251001`, while the price table holds the undated
+`claude-haiku-4-5` (verified present in real transcripts). `measure.py`
+retries a pricing-table MISS exactly once, stripping a trailing
+`-YYYYMMDD` (dash + exactly 8 digits); if the stripped id isn't priced
+either, the task stays unmeasurable — never a guessed price, never a
+neighbouring model's rate, and an undated unknown id is never touched (no
+8-digit suffix, no retry attempted). `chosen_model` always stays the id
+the platform actually billed; when normalization fires, the event also
+carries `billed_pricing_id` (the stripped id whose rate was used) and
+`pricing_normalized: true` — added only in that case, so single-model
+undated events stay byte-compatible with pre-v0.15 output.
 
 ## Declaring capabilities
 

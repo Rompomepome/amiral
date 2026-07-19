@@ -819,5 +819,274 @@ else
 fi
 
 
+# ─── v0.15 dated model-id normalization (measure.py resolve_rate) ───
+# The platform reports ids like claude-sonnet-5-20251001 (verified on real
+# transcripts) while pricing.tsv holds the undated claude-sonnet-5. A
+# pricing MISS retries ONCE with a trailing -YYYYMMDD stripped; if the
+# stripped id isn't priced either, it stays unmeasurable — never a guess.
+export BUTIN_PRICES="$HERE/lib/butin/pricing.tsv"
+
+# PN-1: dated id that RESOLVES — chosen_model stays the dated id (what was
+# actually billed), billed_pricing_id carries the stripped id,
+# pricing_normalized:true, and the cost equals what the undated id's own
+# rate would produce over the same tokens.
+Tpn1=$(mktemp -d); mkdir -p "$Tpn1/s/subagents"
+echo '{"agentType":"grunt","spawnDepth":1}' > "$Tpn1/s/subagents/agent-pn1.meta.json"
+cat > "$Tpn1/s/subagents/agent-pn1.jsonl" << 'TXPN1'
+{"message":{"id":"pn1a","model":"claude-sonnet-5-20251001","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}
+TXPN1
+Apn1="$(mktemp -d)"; printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$Apn1/butin-config.json"
+echo "{\"session_id\":\"PN1\",\"agent_type\":\"grunt\",\"agent_transcript_path\":\"$Tpn1/s/subagents/agent-pn1.jsonl\"}" \
+  | AMIRAL_HOME="$Apn1" bash "$HERE/adapters/claude-code/butin-receipt.sh"
+AMIRAL_HOME="$Apn1" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
+EVPN1=$(cat "$Apn1/butin.jsonl" 2>/dev/null)
+REAL_PN1=$(echo "$EVPN1" | grep -oE '"real_cost_usd": [0-9.eE+-]+' | sed 's/.*: //')
+EXP_PN1=$(awk -F'\t' '$1=="claude-sonnet-5"{printf "%.6f", 100*$2+50*$3}' "$HERE/lib/butin/pricing.tsv")
+if [ "$(grep -c '"real_cost_usd"' <<< "$EVPN1")" = "1" ] \
+   && echo "$EVPN1" | grep -q '"chosen_model": "claude-sonnet-5-20251001"' \
+   && echo "$EVPN1" | grep -q '"billed_pricing_id": "claude-sonnet-5"' \
+   && echo "$EVPN1" | grep -q '"pricing_normalized": true' \
+   && [ -n "$REAL_PN1" ] && [ -n "$EXP_PN1" ] \
+   && awk -v a="$REAL_PN1" -v b="$EXP_PN1" 'BEGIN{d=a-b; if(d<0)d=-d; exit !(d<0.0000015)}'; then
+  ok "PN-1 dated id resolves: chosen_model=dated, billed_pricing_id stripped, pricing_normalized true, cost=undated rate"
+else
+  ko "PN-1 real=$REAL_PN1 exp=$EXP_PN1 events=[$EVPN1]"
+fi
+
+# PN-2: dated id that does NOT resolve — stripped claude-bogus-9 is absent
+# from pricing.tsv too -> ONE unmeasurable event, reason "unknown
+# pricing_id" (never a guessed price).
+Tpn2=$(mktemp -d); mkdir -p "$Tpn2/s/subagents"
+echo '{"agentType":"grunt","spawnDepth":1}' > "$Tpn2/s/subagents/agent-pn2.meta.json"
+cat > "$Tpn2/s/subagents/agent-pn2.jsonl" << 'TXPN2'
+{"message":{"id":"pn2a","model":"claude-bogus-9-20251001","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}
+TXPN2
+Apn2="$(mktemp -d)"; printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$Apn2/butin-config.json"
+echo "{\"session_id\":\"PN2\",\"agent_type\":\"grunt\",\"agent_transcript_path\":\"$Tpn2/s/subagents/agent-pn2.jsonl\"}" \
+  | AMIRAL_HOME="$Apn2" bash "$HERE/adapters/claude-code/butin-receipt.sh"
+AMIRAL_HOME="$Apn2" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
+EVPN2=$(cat "$Apn2/butin.jsonl" 2>/dev/null)
+EVCOUNT_PN2=$(grep -c '.' <<< "$EVPN2")
+if [ "$EVCOUNT_PN2" = "1" ] && echo "$EVPN2" | grep -q '"unmeasurable": true' \
+   && echo "$EVPN2" | grep -q '"reason": "unknown pricing_id"' \
+   && ! echo "$EVPN2" | grep -q '"real_cost_usd"'; then
+  ok "PN-2 dated id does not resolve (stripped claude-bogus-9 absent): single unmeasurable event, no guessed price"
+else
+  ko "PN-2 events=[$EVPN2]"
+fi
+
+# PN-3: undated unknown id — no 8-digit suffix, so no normalization is even
+# attempted; stays unmeasurable, no crash.
+Tpn3=$(mktemp -d); mkdir -p "$Tpn3/s/subagents"
+echo '{"agentType":"grunt","spawnDepth":1}' > "$Tpn3/s/subagents/agent-pn3.meta.json"
+cat > "$Tpn3/s/subagents/agent-pn3.jsonl" << 'TXPN3'
+{"message":{"id":"pn3a","model":"claude-bogus","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}
+TXPN3
+Apn3="$(mktemp -d)"; printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$Apn3/butin-config.json"
+echo "{\"session_id\":\"PN3\",\"agent_type\":\"grunt\",\"agent_transcript_path\":\"$Tpn3/s/subagents/agent-pn3.jsonl\"}" \
+  | AMIRAL_HOME="$Apn3" bash "$HERE/adapters/claude-code/butin-receipt.sh"
+OUTPN3=$(AMIRAL_HOME="$Apn3" python3 "$HERE/lib/butin/measure.py" 2>&1); RCPN3=$?
+EVPN3=$(cat "$Apn3/butin.jsonl" 2>/dev/null)
+if [ "$RCPN3" = "0" ] && ! grep -qi traceback <<< "$OUTPN3" \
+   && echo "$EVPN3" | grep -q '"unmeasurable": true' \
+   && echo "$EVPN3" | grep -q '"reason": "unknown pricing_id"' \
+   && ! echo "$EVPN3" | grep -q '"billed_pricing_id"'; then
+  ok "PN-3 undated unknown id: unmeasurable, no crash, no normalization attempted"
+else
+  ko "PN-3 rc=$RCPN3 out=[$OUTPN3] events=[$EVPN3]"
+fi
+
+
+# ─── v0.15 amiral-butin backfill: mint worker receipts for PAST sessions'
+# real subagent transcripts (live discovery only ever scans the CURRENT
+# session — every session that already ended stays invisible to it
+# forever). Same rules as live discovery: hostile-path guard, stable-gate,
+# dedup against both receipts.jsonl and butin.jsonl. Mints ONLY, never
+# measures.
+export BUTIN_PRICES="$HERE/lib/butin/pricing.tsv"
+
+# BF-1: --dry-run computes everything but writes NOTHING (no receipts.jsonl,
+# no butin.jsonl) yet reports a correct would-mint count.
+BFP1="$(mktemp -d)"
+mkdir -p "$BFP1/projects/-tmp-bf1proj/sessA/subagents"
+printf '{"message":{"id":"m","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' \
+  > "$BFP1/projects/-tmp-bf1proj/sessA/subagents/agent-a1.jsonl"
+touch -t 202601010000 "$BFP1/projects/-tmp-bf1proj/sessA/subagents/agent-a1.jsonl"
+BFH1="$(mktemp -d)"
+OUT_BF1=$(AMIRAL_HOME="$BFH1" CLAUDE_CONFIG_DIR="$BFP1" python3 "$HERE/lib/butin/backfill.py" --all --dry-run)
+if [ ! -f "$BFH1/receipts.jsonl" ] && [ ! -f "$BFH1/butin.jsonl" ] \
+   && echo "$OUT_BF1" | grep -qi "dry-run" \
+   && echo "$OUT_BF1" | grep -qE "would mint: 1"; then
+  ok "BF-1 --dry-run writes nothing (no receipts.jsonl/butin.jsonl) yet reports correct would-mint count"
+else
+  ko "BF-1 out=[$OUT_BF1] receipts=$( [ -f "$BFH1/receipts.jsonl" ] && echo present || echo absent )"
+fi
+
+# BF-2: real run mints a receipt for the planted transcript; second run is
+# idempotent (0 new). Then measure.py prices it with sidecar identity.
+BFP2="$(mktemp -d)"
+mkdir -p "$BFP2/projects/-tmp-bf2proj/sessB/subagents"
+printf '{"message":{"id":"m","model":"claude-sonnet-5","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' \
+  > "$BFP2/projects/-tmp-bf2proj/sessB/subagents/agent-b1.jsonl"
+echo '{"agentType":"grunt","spawnDepth":1}' > "$BFP2/projects/-tmp-bf2proj/sessB/subagents/agent-b1.meta.json"
+touch -t 202601010000 "$BFP2/projects/-tmp-bf2proj/sessB/subagents/agent-b1.jsonl"
+BFH2="$(mktemp -d)"
+OUT_BF2A=$(AMIRAL_HOME="$BFH2" CLAUDE_CONFIG_DIR="$BFP2" python3 "$HERE/lib/butin/backfill.py" --all)
+RCPT_B1=$(grep -c "agent-b1.jsonl" "$BFH2/receipts.jsonl" 2>/dev/null); RCPT_B1=${RCPT_B1:-0}
+OUT_BF2B=$(AMIRAL_HOME="$BFH2" CLAUDE_CONFIG_DIR="$BFP2" python3 "$HERE/lib/butin/backfill.py" --all)
+LINES_AFTER=$(wc -l < "$BFH2/receipts.jsonl" | tr -d ' ')
+if [ "$RCPT_B1" = "1" ] && echo "$OUT_BF2A" | grep -qE "minted: 1" \
+   && echo "$OUT_BF2B" | grep -qE "minted: 0" && [ "$LINES_AFTER" = "1" ]; then
+  ok "BF-2a real run mints receipt for planted transcript; second run idempotent (0 new)"
+else
+  ko "BF-2a rcpt_b1=$RCPT_B1 lines_after=$LINES_AFTER out1=[$OUT_BF2A] out2=[$OUT_BF2B]"
+fi
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$BFH2/butin-config.json"
+AMIRAL_HOME="$BFH2" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
+if grep -q '"agent": "grunt"' "$BFH2/butin.jsonl" 2>/dev/null && grep -q '"real_cost_usd"' "$BFH2/butin.jsonl" 2>/dev/null; then
+  ok "BF-2b measure.py prices the backfilled receipt with sidecar identity (grunt)"
+else
+  ko "BF-2b events=[$(cat "$BFH2/butin.jsonl" 2>/dev/null)]"
+fi
+
+# BF-3: dedup — a transcript already present in butin.jsonl (measured) AND
+# one already present in receipts.jsonl are both skipped, never re-minted.
+BFP3="$(mktemp -d)"
+mkdir -p "$BFP3/projects/-tmp-bf3proj/sessC/subagents"
+T_MEASURED="$BFP3/projects/-tmp-bf3proj/sessC/subagents/agent-measured.jsonl"
+T_RECEIPTED="$BFP3/projects/-tmp-bf3proj/sessC/subagents/agent-receipted.jsonl"
+printf '{"message":{"id":"m","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' > "$T_MEASURED"
+printf '{"message":{"id":"m","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' > "$T_RECEIPTED"
+touch -t 202601010000 "$T_MEASURED" "$T_RECEIPTED"
+BFH3="$(mktemp -d)"
+printf '{"v":2,"receipt":"pre","ts":"2026-01-01T00:00:00Z","agent":"grunt","transcript":"%s","chosen_model":"claude-sonnet-5","real_cost_usd":0.001,"baseline_model":"claude-opus-4-8","counterfactual_cost_usd":0.002,"outcome":"ok"}\n' \
+  "$T_MEASURED" > "$BFH3/butin.jsonl"
+printf '{"v":2,"id":"already","ts":"2026-01-01T00:00:00Z","role":"worker","session":"sessC","agent_hint":"","transcript":"%s","cwd":"","measured":false}\n' \
+  "$T_RECEIPTED" > "$BFH3/receipts.jsonl"
+OUT_BF3=$(AMIRAL_HOME="$BFH3" CLAUDE_CONFIG_DIR="$BFP3" python3 "$HERE/lib/butin/backfill.py" --all)
+NEW_MEASURED=$(grep -c "agent-measured.jsonl" "$BFH3/receipts.jsonl" 2>/dev/null); NEW_MEASURED=${NEW_MEASURED:-0}
+COUNT_RECEIPTED=$(grep -c "agent-receipted.jsonl" "$BFH3/receipts.jsonl" 2>/dev/null); COUNT_RECEIPTED=${COUNT_RECEIPTED:-0}
+if [ "$NEW_MEASURED" = "0" ] && [ "$COUNT_RECEIPTED" = "1" ] && echo "$OUT_BF3" | grep -qE "already_known=2"; then
+  ok "BF-3 dedup: already-measured + already-receipted transcripts both skipped, not re-minted"
+else
+  ko "BF-3 out=[$OUT_BF3] receipts=[$(cat "$BFH3/receipts.jsonl" 2>/dev/null)]"
+fi
+
+# BF-4: hostile filename (embedded double-quote) is skipped, never minted.
+BFP4="$(mktemp -d)"
+mkdir -p "$BFP4/projects/-tmp-bf4proj/sessD/subagents"
+HOSTILE_BF="$BFP4/projects/-tmp-bf4proj/sessD/subagents/agent-x\"quote.jsonl"
+printf '{"message":{"id":"m","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' > "$HOSTILE_BF"
+touch -t 202601010000 "$HOSTILE_BF"
+BFH4="$(mktemp -d)"
+OUT_BF4=$(AMIRAL_HOME="$BFH4" CLAUDE_CONFIG_DIR="$BFP4" python3 "$HERE/lib/butin/backfill.py" --all)
+HOSTILE_MINTED=no
+grep -qF 'agent-x"quote.jsonl' "$BFH4/receipts.jsonl" 2>/dev/null && HOSTILE_MINTED=yes
+if [ "$HOSTILE_MINTED" = "no" ] && echo "$OUT_BF4" | grep -qE "hostile=1"; then
+  ok "BF-4 hostile filename (embedded quote) skipped, never minted"
+else
+  ko "BF-4 out=[$OUT_BF4] receipts=[$(cat "$BFH4/receipts.jsonl" 2>/dev/null)]"
+fi
+
+# BF-5: stable-gate — a fresh transcript (mtime=now) is held out under the
+# default 60s gate, never minted warm.
+BFP5="$(mktemp -d)"
+mkdir -p "$BFP5/projects/-tmp-bf5proj/sessE/subagents"
+T_FRESH="$BFP5/projects/-tmp-bf5proj/sessE/subagents/agent-fresh.jsonl"
+printf '{"message":{"id":"m","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' > "$T_FRESH"
+BFH5="$(mktemp -d)"
+OUT_BF5=$(AMIRAL_HOME="$BFH5" CLAUDE_CONFIG_DIR="$BFP5" python3 "$HERE/lib/butin/backfill.py" --all)
+FRESH_MINTED=no
+grep -qF "agent-fresh.jsonl" "$BFH5/receipts.jsonl" 2>/dev/null && FRESH_MINTED=yes
+if [ "$FRESH_MINTED" = "no" ] && echo "$OUT_BF5" | grep -qE "streaming=1"; then
+  ok "BF-5 stable-gate: fresh transcript (mtime=now) held out under the default 60s gate"
+else
+  ko "BF-5 out=[$OUT_BF5] receipts=[$(cat "$BFH5/receipts.jsonl" 2>/dev/null)]"
+fi
+
+# BF-6: default scope (cwd-mangled project only) vs --all (every project).
+# The mangle must match backfill.py's own os.getcwd() — computed via
+# python3 too, so a symlinked tmp dir (e.g. macOS /var -> /private/var)
+# can't desync the test from the real behavior.
+BF6ROOT="$(mktemp -d)"
+BF6REPO="$(mktemp -d)"
+REALCWD=$(cd "$BF6REPO" && python3 -c 'import os; print(os.getcwd())')
+MANGLED=$(printf '%s' "$REALCWD" | tr '/.' '-')
+mkdir -p "$BF6ROOT/projects/$MANGLED/sessF/subagents"
+mkdir -p "$BF6ROOT/projects/-some-other-project/sessG/subagents"
+T_OWN="$BF6ROOT/projects/$MANGLED/sessF/subagents/agent-own.jsonl"
+T_OTHER="$BF6ROOT/projects/-some-other-project/sessG/subagents/agent-other.jsonl"
+printf '{"message":{"id":"m","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' > "$T_OWN"
+printf '{"message":{"id":"m","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' > "$T_OTHER"
+touch -t 202601010000 "$T_OWN" "$T_OTHER"
+BFH6="$(mktemp -d)"
+OUT_BF6D=$(cd "$BF6REPO" && AMIRAL_HOME="$BFH6" CLAUDE_CONFIG_DIR="$BF6ROOT" python3 "$HERE/lib/butin/backfill.py")
+OWN_MINTED=no; OTHER_MINTED=no
+grep -qF "agent-own.jsonl" "$BFH6/receipts.jsonl" 2>/dev/null && OWN_MINTED=yes
+grep -qF "agent-other.jsonl" "$BFH6/receipts.jsonl" 2>/dev/null && OTHER_MINTED=yes
+if [ "$OWN_MINTED" = "yes" ] && [ "$OTHER_MINTED" = "no" ]; then
+  ok "BF-6a default scope: mints only the cwd-mangled project's transcripts"
+else
+  ko "BF-6a own=$OWN_MINTED other=$OTHER_MINTED out=[$OUT_BF6D] receipts=[$(cat "$BFH6/receipts.jsonl" 2>/dev/null)]"
+fi
+BFH6B="$(mktemp -d)"
+OUT_BF6A=$(cd "$BF6REPO" && AMIRAL_HOME="$BFH6B" CLAUDE_CONFIG_DIR="$BF6ROOT" python3 "$HERE/lib/butin/backfill.py" --all)
+OWN_MINTED_B=no; OTHER_MINTED_B=no
+grep -qF "agent-own.jsonl" "$BFH6B/receipts.jsonl" 2>/dev/null && OWN_MINTED_B=yes
+grep -qF "agent-other.jsonl" "$BFH6B/receipts.jsonl" 2>/dev/null && OTHER_MINTED_B=yes
+if [ "$OWN_MINTED_B" = "yes" ] && [ "$OTHER_MINTED_B" = "yes" ]; then
+  ok "BF-6b --all: mints across both projects"
+else
+  ko "BF-6b own=$OWN_MINTED_B other=$OTHER_MINTED_B out=[$OUT_BF6A] receipts=[$(cat "$BFH6B/receipts.jsonl" 2>/dev/null)]"
+fi
+
+# BF-7 (review fix): BUTIN_STABLE_SECS=abc must not crash the run — falls
+# back to the documented 60s default (guarded exactly like measure.py
+# guards BUTIN_RECEIPT_TTL_HOURS).
+BFP7="$(mktemp -d)"
+mkdir -p "$BFP7/projects/-tmp-bf7proj/sessH/subagents"
+printf '{"message":{"id":"m","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' \
+  > "$BFP7/projects/-tmp-bf7proj/sessH/subagents/agent-h1.jsonl"
+touch -t 202601010000 "$BFP7/projects/-tmp-bf7proj/sessH/subagents/agent-h1.jsonl"
+BFH7="$(mktemp -d)"
+OUT_BF7=$(AMIRAL_HOME="$BFH7" CLAUDE_CONFIG_DIR="$BFP7" BUTIN_STABLE_SECS=abc python3 "$HERE/lib/butin/backfill.py" --all --dry-run 2>&1); RC_BF7=$?
+if [ "$RC_BF7" = "0" ] && ! grep -qi traceback <<< "$OUT_BF7" && echo "$OUT_BF7" | grep -qE "would mint: 1"; then
+  ok "BF-7 BUTIN_STABLE_SECS=abc: no crash, falls back to the 60s default (dry-run still would-mint 1)"
+else
+  ko "BF-7 rc=$RC_BF7 out=[$OUT_BF7]"
+fi
+
+# BF-8 (review fix — FIX 1): lock coordination with measure.py. A FRESH
+# ${AMIRAL_HOME}/.measure.lock (mtime=now, not stale) must block a real
+# (non-dry) backfill entirely: mints NOTHING, exits 0 (busy back-off),
+# foreign lock left in place. Removing the lock lets a subsequent real run
+# mint as expected — proving the lock is advisory/cooperative, not a
+# permanent wedge.
+BFP8="$(mktemp -d)"
+mkdir -p "$BFP8/projects/-tmp-bf8proj/sessI/subagents"
+T_BF8="$BFP8/projects/-tmp-bf8proj/sessI/subagents/agent-i1.jsonl"
+printf '{"message":{"id":"m","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' > "$T_BF8"
+touch -t 202601010000 "$T_BF8"
+BFH8="$(mktemp -d)"
+mkdir -p "$BFH8/.measure.lock"   # fresh lock, mtime=now (not stale)
+OUT_BF8A=$(AMIRAL_HOME="$BFH8" CLAUDE_CONFIG_DIR="$BFP8" python3 "$HERE/lib/butin/backfill.py" --all); RC_BF8A=$?
+RCPT_BEFORE=$(grep -c "agent-i1.jsonl" "$BFH8/receipts.jsonl" 2>/dev/null); RCPT_BEFORE=${RCPT_BEFORE:-0}
+LOCK_STILL_THERE=no; [ -d "$BFH8/.measure.lock" ] && LOCK_STILL_THERE=yes
+if [ "$RC_BF8A" = "0" ] && [ "$RCPT_BEFORE" = "0" ] && echo "$OUT_BF8A" | grep -qi "busy" \
+   && [ "$LOCK_STILL_THERE" = "yes" ]; then
+  ok "BF-8a fresh lock present: real backfill mints nothing, exits 0 (busy back-off), lock untouched"
+else
+  ko "BF-8a rc=$RC_BF8A rcpt_before=$RCPT_BEFORE lock=$LOCK_STILL_THERE out=[$OUT_BF8A]"
+fi
+rm -rf "$BFH8/.measure.lock"
+OUT_BF8B=$(AMIRAL_HOME="$BFH8" CLAUDE_CONFIG_DIR="$BFP8" python3 "$HERE/lib/butin/backfill.py" --all); RC_BF8B=$?
+RCPT_AFTER=$(grep -c "agent-i1.jsonl" "$BFH8/receipts.jsonl" 2>/dev/null); RCPT_AFTER=${RCPT_AFTER:-0}
+if [ "$RC_BF8B" = "0" ] && [ "$RCPT_AFTER" = "1" ] && echo "$OUT_BF8B" | grep -qE "minted: 1"; then
+  ok "BF-8b after removing the lock, a real run mints as expected (0 -> 1 receipt)"
+else
+  ko "BF-8b rc=$RC_BF8B rcpt_after=$RCPT_AFTER out=[$OUT_BF8B]"
+fi
+
+
 echo ""; echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

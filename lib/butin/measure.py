@@ -46,8 +46,20 @@ measured events. Correct by construction:
     receipt against receipts.jsonl + butin.jsonl before it's ever written.
     Brain is exempt — the Stop hook legitimately re-references the SAME
     main transcript every turn (the supersede flow above).
+  * DATED MODEL IDS ARE NORMALIZED ONCE, NEVER GUESSED — the platform
+    reports ids like "claude-haiku-4-5-20251001" (verified on real
+    transcripts) while pricing.tsv holds the undated "claude-haiku-4-5". A
+    pricing-table MISS retries exactly once after stripping a trailing
+    -YYYYMMDD (resolve_rate()); if the stripped id isn't priced either, the
+    id stays unmeasurable — never a fallback to a neighbouring model. An
+    undated unknown id is never touched (no 8-digit suffix, no retry).
+    chosen_model always stays the id the platform actually billed; a
+    normalized slice additionally carries billed_pricing_id (the stripped
+    id whose rate was used) and pricing_normalized:true — added only when
+    normalization actually fired, so single-model undated events remain
+    byte-compatible with pre-v0.15 output.
 """
-import calendar, json, os, sys, glob, time, shutil
+import calendar, json, os, re, sys, glob, time, shutil
 
 HOME = os.environ.get("AMIRAL_HOME", os.path.expanduser("~/.amiral"))
 RECEIPTS = os.path.join(HOME, "receipts.jsonl")
@@ -121,10 +133,37 @@ def agent_name(transcript, hint, role):
         except Exception: pass
     return hint or "worker"
 
-def cost(rates, model, tk):
+DATED_SUFFIX = re.compile(r'-\d{8}$')   # e.g. -20251001, exactly 8 digits
+
+def resolve_rate(rates, model):
+    """A pricing-table MISS on the platform's own reported id retries ONCE
+    after stripping a trailing -YYYYMMDD (verified on real transcripts:
+    the platform reports "claude-haiku-4-5-20251001" while pricing.tsv
+    holds the undated "claude-haiku-4-5"). Never a second guess: if the
+    stripped id isn't in the table either, stay unmeasurable. An undated
+    unknown id (no 8-digit suffix) is never touched — straight miss, no
+    normalization attempted, never a neighbouring model's rate.
+
+    Returns (rate_tuple_or_None, billed_id, normalized_bool)."""
     r = rates.get(model)
-    if not r: return None
-    return tk[0]*r[0] + tk[1]*r[1] + tk[3]*r[2] + tk[2]*r[3]   # in, out, cache_write, cache_read
+    if r is not None: return r, model, False
+    if DATED_SUFFIX.search(model):
+        stripped = model[:-9]   # drop "-YYYYMMDD" (dash + 8 digits = 9 chars)
+        # A model shaped LITERALLY "-YYYYMMDD" (e.g. "-20251001") strips to
+        # "" — never look that up, a blank pricing-table key must never be
+        # matched as if it were a real id.
+        if stripped and stripped in rates:
+            return rates[stripped], stripped, True
+    return None, model, False
+
+def cost(rates, model, tk):
+    """Returns (cost_or_None, billed_pricing_id, normalized_bool). billed_id
+    is the id whose rate was actually used (may differ from `model` when a
+    dated id was normalized); normalized is True only in that case."""
+    r, billed_id, normalized = resolve_rate(rates, model)
+    if r is None: return None, model, False
+    c = tk[0]*r[0] + tk[1]*r[1] + tk[3]*r[2] + tk[2]*r[3]   # in, out, cache_write, cache_read
+    return c, billed_id, normalized
 
 def main():
     # LOCK: measure.py can now be invoked concurrently (hooks + report/cache.sh).
@@ -313,12 +352,16 @@ def _measure():
         priced, unpriced = {}, set()
         for mdl, tok in groups.items():
             tk = (tok[0], tok[1], tok[2], tok[3])
-            real = cost(rates, mdl, tk)
-            cf = cost(rates, baseline, tk)
+            real, real_billed, real_norm = cost(rates, mdl, tk)
+            # baseline is normalized for the counterfactual math too (never
+            # let a dated baseline id go unpriced when its undated twin is
+            # known) but its normalization is never stamped on the event —
+            # baseline_model stays exactly what's configured.
+            cf, _, _ = cost(rates, baseline, tk)
             if real is None: unpriced.add(mdl)
             if cf is None: unpriced.add(baseline)
             if real is not None and cf is not None:
-                priced[mdl] = (tk, real, cf)
+                priced[mdl] = (tk, real, cf, real_billed, real_norm)
         if unpriced:
             new_events.append({"v": 2, "receipt": r["id"], "ts": r["ts"], "agent": ag,
                   "transcript": transcript, "model": ",".join(sorted(unpriced)),
@@ -332,16 +375,25 @@ def _measure():
         # events), and the report's per-agent rows aggregate the slices
         # automatically (same agent on every slice of one receipt).
         slice_events = []
-        for mdl, (tk, real, cf) in priced.items():
+        for mdl, (tk, real, cf, real_billed, real_norm) in priced.items():
             i, o, cr, cw = tk
             prem_i = i if (ag != "brain" and mdl != baseline and real < cf) else 0
             prem_o = o if (ag != "brain" and mdl != baseline and real < cf) else 0
-            slice_events.append({"v": 2, "receipt": r["id"], "ts": r["ts"], "session": r.get("session"),
+            ev = {"v": 2, "receipt": r["id"], "ts": r["ts"], "session": r.get("session"),
                   "cwd": r.get("cwd"), "transcript": transcript, "agent": ag, "chosen_model": mdl,
                   "tokens": {"in": i, "out": o, "cache_read": cr, "cache_write": cw},
                   "real_cost_usd": round(real, 6), "baseline_model": baseline,
                   "counterfactual_cost_usd": round(cf, 6), "pricing_version": pver,
-                  "outcome": "ok", "prem_in_avoided": prem_i, "prem_out_avoided": prem_o})
+                  "outcome": "ok", "prem_in_avoided": prem_i, "prem_out_avoided": prem_o}
+            # AUDITABILITY: chosen_model stays the id the platform actually
+            # reported (what was billed) — these two fields are added ONLY
+            # when the dated-suffix strip actually fired for this slice, so
+            # a single-model undated receipt's event stays byte-compatible
+            # with pre-v0.15 output (no new keys at all).
+            if real_norm:
+                ev["billed_pricing_id"] = real_billed
+                ev["pricing_normalized"] = True
+            slice_events.append(ev)
 
         if ag == "brain" and r.get("session"):
             sess = r["session"]
