@@ -127,16 +127,28 @@ if [ "$ROLE" = "brain" ] && [ -n "${TRANSCRIPT:-}" ]; then
       # task's real completion time either, and an uncorrected future ts
       # would make measure.py's absent-transcript TTL gate (negative age)
       # hold the receipt pending forever.
-      WEPOCH="$(stat -f %m "$AT" 2>/dev/null || stat -c %Y "$AT" 2>/dev/null)"
+      # GNU form FIRST, then VALIDATE digits-only, then the BSD form, validate
+      # again. Order matters and MUST NOT be flipped back: on GNU `stat -f`
+      # means --file-system, so `%m` is parsed as a FILENAME — stat errors on
+      # it, still PRINTS filesystem info for the real file to stdout, and exits
+      # non-zero. A BSD-first `|| stat -c` chain then appends the epoch to that
+      # garbage, yielding a multi-line non-numeric WEPOCH. BSD is the safe
+      # fallback (rejects `-c` with nothing on stdout). Rule: never chain on
+      # exit status alone when the failing branch can write to stdout.
+      WEPOCH="$(stat -c %Y "$AT" 2>/dev/null)"
+      case "$WEPOCH" in ''|*[!0-9]*) WEPOCH="$(stat -f %m "$AT" 2>/dev/null)" ;; esac
       NOWEPOCH="$(date -u +%s)"
       case "${WEPOCH:-}" in
-        ''|*[!0-9]*) WTS="$TS" ;;
+        ''|*[!0-9]*) WTS="$TS" ;;   # invalid/empty epoch degrades to discovery ts
         *)
           if [ "$WEPOCH" -gt "$NOWEPOCH" ]; then
             WTS="$TS"   # clock skew: a future mtime can't be the real completion time
           else
-            WTS="$(date -u -r "$WEPOCH" +%FT%TZ 2>/dev/null || date -u -d "@$WEPOCH" +%FT%TZ 2>/dev/null)"
-            [ -n "$WTS" ] || WTS="$TS"
+            # Same GNU-first-then-validate rule for epoch->ISO: GNU `date -d`
+            # first, then BSD `date -r`, and only accept an ISO-shaped result.
+            WTS="$(date -u -d "@$WEPOCH" +%FT%TZ 2>/dev/null)"
+            case "$WTS" in [0-9][0-9][0-9][0-9]-*) ;; *) WTS="$(date -u -r "$WEPOCH" +%FT%TZ 2>/dev/null)" ;; esac
+            case "$WTS" in [0-9][0-9][0-9][0-9]-*) ;; *) WTS="$TS" ;; esac
           fi ;;
       esac
       WID="$(printf '%s' "$SESSION-$(basename "$AT" .jsonl)-$WTS-$$-${RANDOM:-0}" | shasum 2>/dev/null | awk '{print substr($1,1,12)}')"

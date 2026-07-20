@@ -330,5 +330,68 @@ else
   ko "J-16 trailer=[$MSG_J16]"
 fi
 
+# ─── J-17 (v0.15.1, C6): --with-cost + public remote + NO TTY must be    ───
+# ─── refused — the cost-leaking hook must not be installed without real   ───
+# ─── consent.                                                             ───
+REPO_J17="$(mktemp -d)"; AHJ17="$(mktemp -d)"
+( cd "$REPO_J17" && git init -q && git remote add origin https://github.com/example/repo.git )
+OUT_J17=$( cd "$REPO_J17" && AMIRAL_HOME="$AHJ17" bash "$HERE/bin/amiral-journal" enable --with-cost </dev/null 2>&1 )
+RC_J17=$?
+if [ "$RC_J17" != "0" ] && [ ! -f "$REPO_J17/.git/hooks/prepare-commit-msg" ]; then
+  ok "J-17 C6 repro: --with-cost on a public remote with no TTY is refused (exit $RC_J17), hook NOT written"
+else
+  ko "J-17 rc=$RC_J17 hook_exists=$([ -f "$REPO_J17/.git/hooks/prepare-commit-msg" ] && echo yes || echo no) out=[$OUT_J17]"
+fi
+
+# ─── J-18: --yes gives explicit non-interactive consent — the hook       ───
+# ─── installs, with the Net-Saved block.                                  ───
+REPO_J18="$(mktemp -d)"; AHJ18="$(mktemp -d)"
+( cd "$REPO_J18" && git init -q && git remote add origin https://github.com/example/repo.git )
+OUT_J18=$( cd "$REPO_J18" && AMIRAL_HOME="$AHJ18" bash "$HERE/bin/amiral-journal" enable --with-cost --yes </dev/null 2>&1 )
+RC_J18=$?
+if [ "$RC_J18" = "0" ] && [ -x "$REPO_J18/.git/hooks/prepare-commit-msg" ] \
+   && grep -q "Amiral-Net-Saved" "$REPO_J18/.git/hooks/prepare-commit-msg"; then
+  ok "J-18 C6 opt-out: --yes gives non-interactive consent, hook installs with Net-Saved"
+else
+  ko "J-18 rc=$RC_J18 out=[$OUT_J18]"
+fi
+
+# ─── J-19: no public remote -> the consent gate never triggers,          ───
+# ─── --with-cost enables normally even without a TTY.                     ───
+REPO_J19="$(mktemp -d)"; AHJ19="$(mktemp -d)"
+( cd "$REPO_J19" && git init -q )
+OUT_J19=$( cd "$REPO_J19" && AMIRAL_HOME="$AHJ19" bash "$HERE/bin/amiral-journal" enable --with-cost </dev/null 2>&1 )
+RC_J19=$?
+if [ "$RC_J19" = "0" ] && [ -x "$REPO_J19/.git/hooks/prepare-commit-msg" ]; then
+  ok "J-19 C6 no-public-remote: gate not triggered, --with-cost enables normally without a TTY"
+else
+  ko "J-19 rc=$RC_J19 out=[$OUT_J19]"
+fi
+
+# ─── J-20 (post-review): the gate must fail closed on a NON-github/gitlab   ───
+# ─── public remote too (Bitbucket) — the old host denylist leaked here.     ───
+REPO_J20="$(mktemp -d)"; AHJ20="$(mktemp -d)"
+( cd "$REPO_J20" && git init -q && git remote add origin https://bitbucket.org/example/repo.git )
+OUT_J20=$( cd "$REPO_J20" && AMIRAL_HOME="$AHJ20" bash "$HERE/bin/amiral-journal" enable --with-cost </dev/null 2>&1 )
+RC_J20=$?
+if [ "$RC_J20" != "0" ] && [ ! -f "$REPO_J20/.git/hooks/prepare-commit-msg" ]; then
+  ok "J-20 C6 breadth: --with-cost on a Bitbucket remote with no TTY is refused, hook NOT written"
+else
+  ko "J-20 rc=$RC_J20 hook_exists=$([ -f "$REPO_J20/.git/hooks/prepare-commit-msg" ] && echo yes || echo no) out=[$OUT_J20]"
+fi
+
+# ─── J-21 (post-review): an ssh-form remote (git@host:path) is a network    ───
+# ─── host too — must gate. A self-hosted host is also caught by the same    ───
+# ─── fail-closed default; loopback/filesystem remotes are the only skips.   ───
+REPO_J21="$(mktemp -d)"; AHJ21="$(mktemp -d)"
+( cd "$REPO_J21" && git init -q && git remote add origin git@git.example.com:example/repo.git )
+OUT_J21=$( cd "$REPO_J21" && AMIRAL_HOME="$AHJ21" bash "$HERE/bin/amiral-journal" enable --with-cost </dev/null 2>&1 )
+RC_J21=$?
+if [ "$RC_J21" != "0" ] && [ ! -f "$REPO_J21/.git/hooks/prepare-commit-msg" ]; then
+  ok "J-21 C6 breadth: --with-cost on an ssh-form remote with no TTY is refused, hook NOT written"
+else
+  ko "J-21 rc=$RC_J21 hook_exists=$([ -f "$REPO_J21/.git/hooks/prepare-commit-msg" ] && echo yes || echo no) out=[$OUT_J21]"
+fi
+
 echo ""; echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

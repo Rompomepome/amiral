@@ -127,6 +127,9 @@ jobs:
       - name: Journal battery
         run: bash tests/test-journal.sh
 
+      - name: Trust gate battery
+        run: bash tests/test-trust.sh
+
       - name: No dangerous flags shipped
         run: |
           ! grep -R -- "--dangerously-skip-permissions" shell/ install.sh agents/ skills/
@@ -155,3 +158,5 @@ jobs:
         run: bash tests/test-statusline.sh
       - name: Journal battery (BSD userland)
         run: bash tests/test-journal.sh
+      - name: Trust gate battery (BSD userland)
+        run: bash tests/test-trust.sh

@@ -131,11 +131,17 @@ else
 fi
 
 echo "-- Current project --"
-if [ -x ./verify.sh ]; then
+if [ -f ./verify.sh ] && [ -x ./verify.sh ]; then
   ok "verify.sh found here — the fleet has a machine-checkable done gate"
   TRUST_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/amiral-trusted-repos"
-  RR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-  FP="$RR::$(shasum ./verify.sh 2>/dev/null | awk '{print $1}')"
+  RR="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+  DSHA="$(shasum ./verify.sh 2>/dev/null | awk '{print $1}')"
+  # repo identity: must compute IDENTICALLY to bin/amiral-trust and
+  # hooks/subagent-verify.sh (L10 fix — see docs/hooks.md "Security model").
+  DIDENTITY="$(git config --get remote.origin.url 2>/dev/null)"
+  [ -z "$DIDENTITY" ] && DIDENTITY="$(git rev-list --max-parents=0 HEAD 2>/dev/null | tail -1)"
+  DIDENTITY="$(printf '%s' "$DIDENTITY" | tr -d '\n')"
+  FP="$RR::$DSHA::$DIDENTITY"
   if [ -f "$TRUST_FILE" ] && grep -qxF "$FP" "$TRUST_FILE" 2>/dev/null; then
     ok "this verify.sh is trusted for the SubagentStop hook"
   else

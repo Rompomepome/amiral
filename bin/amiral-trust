@@ -2,15 +2,26 @@
 # amiral-trust — mark THIS repo's ./verify.sh as trusted for the
 # SubagentStop verification hook. Run once, inside a repo you trust.
 # Re-run if you legitimately change verify.sh (the trust is pinned to
-# its checksum, so any edit re-requires trust — tamper-evident).
+# its checksum, so any edit re-requires trust). This does NOT cover
+# anything verify.sh sources, execs, or invokes (helper scripts, npm/make
+# targets, node_modules) — trusting a repo means trusting its entire
+# build, not just this one file. See docs/hooks.md "Security model".
 set -uo pipefail
 
 if [ ! -f ./verify.sh ]; then
   echo "No ./verify.sh in $(pwd). Nothing to trust." >&2; exit 1
 fi
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
 TRUST_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/amiral-trusted-repos"
-FINGERPRINT="$REPO_ROOT::$(shasum ./verify.sh | awk '{print $1}')"
+SHA="$(shasum ./verify.sh | awk '{print $1}')"
+# repo identity: prefer the remote origin URL; else the root (first) commit;
+# else empty (unanchored — path+hash only, honestly weaker). Must compute
+# IDENTICALLY to hooks/subagent-verify.sh and bin/amiral-doctor (L10 fix —
+# binds trust to the repo, not just path+hash).
+IDENTITY="$(git config --get remote.origin.url 2>/dev/null)"
+[ -z "$IDENTITY" ] && IDENTITY="$(git rev-list --max-parents=0 HEAD 2>/dev/null | tail -1)"
+IDENTITY="$(printf '%s' "$IDENTITY" | tr -d '\n')"
+FINGERPRINT="$REPO_ROOT::$SHA::$IDENTITY"
 
 mkdir -p "$(dirname "$TRUST_FILE")"
 if grep -qxF "$FINGERPRINT" "$TRUST_FILE" 2>/dev/null; then
@@ -19,4 +30,7 @@ else
   echo "$FINGERPRINT" >> "$TRUST_FILE"
   echo "Trusted: $REPO_ROOT/verify.sh"
   echo "(pinned to its current checksum — editing verify.sh re-requires amiral-trust)"
+  echo "(covers verify.sh's own bytes only — anything it sources/execs runs unfingerprinted)"
+  echo "(trust format changed in v0.15.1 to also bind repo identity: if this repo was"
+  echo " trusted before that release, this replaces the old, weaker path+hash entry)"
 fi

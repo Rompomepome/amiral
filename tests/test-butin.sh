@@ -622,13 +622,47 @@ fi
 # stat/date fallback chain the hook uses) and compare against the stored
 # event ts for D-1's agent-d1 transcript (back-dated, never touched again
 # since, so its mtime is still authoritative here).
-EPOCH_D1="$(stat -f %m "$Tdisc1/S/subagents/agent-d1.jsonl" 2>/dev/null || stat -c %Y "$Tdisc1/S/subagents/agent-d1.jsonl" 2>/dev/null)"
-EXPECT_TS_D1="$(date -u -r "$EPOCH_D1" +%FT%TZ 2>/dev/null || date -u -d "@$EPOCH_D1" +%FT%TZ)"
+# GNU-first + validate, then BSD — same order as butin-receipt.sh. A
+# BSD-first chain here is exactly what made D-5 red on ubuntu: on GNU,
+# `stat -f %m` prints filesystem garbage to stdout and exits non-zero, so the
+# `||` appended the epoch to it, and `date` then failed both ways -> empty
+# expect. Never chain on exit status alone when the failing branch writes stdout.
+EPOCH_D1="$(stat -c %Y "$Tdisc1/S/subagents/agent-d1.jsonl" 2>/dev/null)"
+case "$EPOCH_D1" in ''|*[!0-9]*) EPOCH_D1="$(stat -f %m "$Tdisc1/S/subagents/agent-d1.jsonl" 2>/dev/null)" ;; esac
+case "$EPOCH_D1" in ''|*[!0-9]*) EPOCH_D1="" ;; esac
+EXPECT_TS_D1="$(date -u -d "@$EPOCH_D1" +%FT%TZ 2>/dev/null)"
+case "$EXPECT_TS_D1" in [0-9][0-9][0-9][0-9]-*) ;; *) EXPECT_TS_D1="$(date -u -r "$EPOCH_D1" +%FT%TZ 2>/dev/null)" ;; esac
+case "$EXPECT_TS_D1" in [0-9][0-9][0-9][0-9]-*) ;; *) EXPECT_TS_D1="" ;; esac
 ACTUAL_TS_D1=$(grep -F "\"transcript\": \"$Tdisc1/S/subagents/agent-d1.jsonl\"" "$Adisc1/butin.jsonl" 2>/dev/null | grep -oE '"ts": "[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
 if [ -n "$EXPECT_TS_D1" ] && [ "$ACTUAL_TS_D1" = "$EXPECT_TS_D1" ]; then
   ok "D-5 discovery ts = transcript mtime ($EXPECT_TS_D1), not discovery time"
 else
   ko "D-5 expect=$EXPECT_TS_D1 actual=$ACTUAL_TS_D1"
+fi
+
+# D-5b: regression guard for the epoch-resolution shape. A non-numeric epoch
+# (the multi-line garbage a BSD-first `stat` chain produces on GNU) must NEVER
+# be accepted — it must degrade to the default. Mirrors butin-receipt.sh's
+# GNU-first + validate logic and asserts both directions: a real file yields a
+# digits-only epoch, and injected garbage is rejected rather than propagated.
+_resolve_epoch_d5b() {   # GNU-first, validate, BSD, validate — the correct shape
+  local f="$1" e
+  e="$(stat -c %Y "$f" 2>/dev/null)"
+  case "$e" in ''|*[!0-9]*) e="$(stat -f %m "$f" 2>/dev/null)" ;; esac
+  case "$e" in ''|*[!0-9]*) e="" ;; esac
+  printf '%s' "$e"
+}
+_RF_D5B="$(mktemp)"
+GOOD_D5B="$(_resolve_epoch_d5b "$_RF_D5B")"
+GOOD_NUM=0; case "$GOOD_D5B" in ''|*[!0-9]*) GOOD_NUM=0 ;; *) GOOD_NUM=1 ;; esac
+# the exact garbage BSD-first-on-GNU would produce: fs-info lines + epoch.
+BAD_D5B="$(printf '  File: "/x"\n  ID: 0\n1699999999')"
+BAD_OUT=nonempty; case "$BAD_D5B" in ''|*[!0-9]*) BAD_OUT="" ;; *) BAD_OUT="$BAD_D5B" ;; esac
+rm -f "$_RF_D5B"
+if [ "$GOOD_NUM" = "1" ] && [ -z "$BAD_OUT" ]; then
+  ok "D-5b epoch validation: numeric epoch accepted ($GOOD_D5B), non-numeric/multi-line rejected"
+else
+  ko "D-5b good=[$GOOD_D5B] num=$GOOD_NUM bad_accepted=[$BAD_OUT]"
 fi
 
 

@@ -2,7 +2,7 @@
 # amiral journal de bord — provenance for AI-assisted commits. Opt-in,
 # per-repo, zero server: trailers live in git, the proof travels with
 # the code. "Ship AI-written code you can defend."
-# Commands: enable [--with-cost] | disable | status | attest | flag
+# Commands: enable [--with-cost] [--yes] | disable | status | attest | flag
 export LC_ALL=C
 set -uo pipefail
 AMIRAL_HOME="${AMIRAL_HOME:-$HOME/.amiral}"
@@ -46,14 +46,64 @@ attest_hash() {
     | shasum -a 256 2>/dev/null | awk '{print substr($1,1,16)}'
 }
 
+have_tty() { { : </dev/tty; } 2>/dev/null; }
+
+# C6: whether any remote is worth asking consent for. A DENYLIST of forge
+# hostnames (github/gitlab/…) can never enumerate self-hosted or third-party
+# public hosts (Bitbucket, Codeberg, a company GitLab, plain ssh), so a
+# match-only gate leaks $ figures on every host it forgot. Fail closed the
+# other way: treat ANY remote pointing at a network host as consent-worthy,
+# and SKIP only obviously-local ones (filesystem paths, loopback). Over-asking
+# on a genuinely-private host is harmless (--yes clears it); missing a public
+# one is the exact leak this gate exists to stop.
+remote_needs_consent() {
+  # Loop in the CURRENT shell via process substitution (not `| while`): a
+  # `| grep -q` that matched early would send SIGPIPE up to git/awk, and under
+  # `set -o pipefail` that 141 surfaces as "false" even when a public remote
+  # was found. Process substitution avoids the pipe entirely; _hit persists.
+  local _u _hit=""
+  while IFS= read -r _u; do
+    case "$_u" in
+      ''|/*|./*|../*|file://*|~*) : ;;                          # local filesystem path
+      *localhost*|*127.0.0.1*|*'[::1]'*) : ;;                   # loopback
+      ssh://*|git://*|http://*|https://*|ftp://*|ftps://*|*@*:*) _hit=yes ;;  # network host
+    esac
+  done < <(git remote -v 2>/dev/null | awk 'NF>=2{print $2}')
+  [ -n "$_hit" ]
+}
+
 case "$CMD" in
   enable)
     ROOT=$(repo_root) || { echo "not a git repo"; exit 1; }
-    WITH_COST=0; [ "${2:-}" = "--with-cost" ] && WITH_COST=1
-    # public-remote warning for the cost trailer (opt-in stage 3)
-    if [ "$WITH_COST" = "1" ] && git remote -v 2>/dev/null | grep -qE "github.com|gitlab.com"; then
-      echo "⚠ public remote detected: Amiral-Net-Saved will be visible to everyone. Ctrl-C to abort, Enter to continue."
-      read -r _ </dev/tty 2>/dev/null || true
+    WITH_COST=0; ASSUME_YES=0
+    shift || true
+    for ARG in "$@"; do
+      case "$ARG" in
+        --with-cost) WITH_COST=1 ;;
+        --yes|--assume-yes) ASSUME_YES=1 ;;
+      esac
+    done
+    # C6: this is a security confirmation, not a formality. Amiral-Net-Saved
+    # publishes your dollar savings figures into every commit message from
+    # here on. On a public remote, that is visible to everyone. Without a
+    # controlling terminal there is no way to get real, informed consent, so
+    # this gate fails CLOSED instead of silently proceeding: no terminal and
+    # no --yes means the hook is NOT installed.
+    if [ "$WITH_COST" = "1" ] && remote_needs_consent; then
+      if [ "$ASSUME_YES" = "1" ]; then
+        echo "Remote detected. Continuing because --yes was passed: consent was given non-interactively, by explicit flag."
+      elif have_tty; then
+        echo "Warning: a remote was detected (it may be publicly visible). The Amiral-Net-Saved trailer will publish your dollar savings figures into every commit message pushed to it. Press Ctrl-C now to abort, or press Enter to continue."
+        # read -t: a tty can be open (docker -t, an output-only pty) with no
+        # human to type — an unbounded read would hang, not fail closed. Time
+        # out and abort so "no confirmation" always means "not installed".
+        read -t 60 -r _ </dev/tty || { echo "Aborted: no confirmation was received."; exit 1; }
+      else
+        echo "Refusing to enable --with-cost: a remote was detected and there is no terminal available to ask for your confirmation." >&2
+        echo "The Amiral-Net-Saved trailer would publish your dollar savings figures into every commit message pushed to this (possibly public) repository without your explicit consent." >&2
+        echo "Re-run this command in an interactive terminal, or pass --yes if you really mean it." >&2
+        exit 1
+      fi
     fi
     HOOK_FILE=$(hook_path)
     if [ -z "$HOOK_FILE" ]; then
@@ -243,5 +293,5 @@ Amiral-Noted: $(date -u +%FT%TZ)"
     fi
     echo "[![sailed with amiral](https://img.shields.io/badge/⚓_sailed_with_amiral-${AMIR_TASKS}_amiral--routed_tasks_·_net_%2B\$${NET}-2b4c7e)](https://github.com/Rompomepome/amiral/blob/main/BENCHMARKS.md)"
     echo "coverage: $AMIR_TASKS amiral-routed · $OTHER_TASKS other subagent task(s) measured separately · net of escalations & brain premium · methodology in BENCHMARKS.md" ;;
-  *) echo "usage: amiral-journal enable [--with-cost] | disable | status | attest | note | flag"; exit 1 ;;
+  *) echo "usage: amiral-journal enable [--with-cost] [--yes] | disable | status | attest | note | flag"; exit 1 ;;
 esac
