@@ -142,8 +142,27 @@ jobs:
         # READMEs only: docs/butin-spec-v2.md legitimately states the
         # NEGATIVE ("there is no Amiral-Verified trailer") — that honest
         # mention must not trip the guard.
+        # Case-INSENSITIVE (-i): a re-divergence as `amiral-verified` or
+        # `Amiral Verified` is the same dead-trailer claim (aligns with the
+        # trust-gate guard below, which is also -i).
         run: |
-          ! grep -n "Amiral-Verified\|Amiral-Attest" README.md README.fr.md
+          ! grep -niE "amiral[- ]verified|amiral[- ]attest" README.md README.fr.md
+
+      - name: No false trust-gate promise in READMEs
+        # docs/hooks.md legitimately says "refuses to run an untrusted
+        # verify.sh" (a scoped, honest claim) — that file is NOT in scope
+        # here. The READMEs must not overclaim the trust gate as
+        # tamper-evident or as preventing untrusted code from ever running;
+        # AUDIT-FABLE H9 disproved that exact guarantee (verify.sh's own
+        # sourced/exec'd helpers run unfingerprinted).
+        # Order-agnostic on purpose: the false claim survives rewording
+        # ("never runs untrusted" / "untrusted code never runs" / "prevents
+        # running untrusted" / "tamper evident" without the hyphen). A
+        # NEGATION/PREVENTION word within 40 chars of "untrusted" (either
+        # side) trips it; the honest "refuses to run untrusted ... until you
+        # trust it" phrasing does NOT (refuse/refuses is not a match word).
+        run: |
+          ! grep -niE "tamper.?evident|(never|cannot|can'?t|won'?t|prevents?|stops?|blocks?)[^.]{0,40}untrusted|untrusted[^.]{0,40}(never|cannot|can'?t|won'?t|prevent|from (running|ever))" README.md README.fr.md
 
   # BSD userland coverage: every stat -c || stat -f and date -d || date -j
   # chain only exercises its GNU branch on ubuntu. macOS runs the BSD side

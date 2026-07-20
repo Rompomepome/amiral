@@ -27,7 +27,7 @@
 - **Two shapes included:** orchestrator and advisor — the exact shapes from Anthropic's evals.
 - **5 specialized agents**, including an adversarial security pass (the corsaire).
 - **Portable** to Codex, OpenCode, Aider and 25+ tools via the open AGENTS.md standard.
-- **Provable.** Opt-in git trailers (route, verified, attestation hash) — ship AI-written code you can defend.
+- **Provable.** Opt-in git trailers (route, diff-digest) — ship AI-written code you can defend.
 - **No telemetry, ever.** Nothing hosted, nothing phones home.
 
 > [!TIP]
@@ -54,7 +54,7 @@ included on Max, and on Pro Claude Code serves Sonnet within your plan,
 so there's nothing to pay and nothing to configure. Workers run on
 Sonnet (~1/5 the frontier cost). On a Pro plan and want the lightest
 footprint? `amiral-solo` runs an all-Sonnet fleet. Want the premium
-planning brain? `AMIRAL_BRAIN=fable amiral` (metered after July 11).
+planning brain? `AMIRAL_BRAIN=fable amiral` (metered via credits since July 12).
 
 (Power users: optional variants and env overrides exist, but you never need them to start.)
 
@@ -68,9 +68,9 @@ Frontier models in Claude Code are the fastest way to burn a usage window:
 
 You don't need frontier intelligence to rename 40 imports. You need it to *plan* the rename and *verify* it happened. The admiral commands the fleet; the admiral doesn't row.
 
-## 💸 The Fable cliff (why this matters right now)
+## 💸 The Fable cliff (what changed on July 12)
 
-Anthropic's [official redeployment terms](https://www.anthropic.com/news/redeploying-fable-5): Fable 5 is included in Pro/Max/Team plans (up to 50% of weekly limits) **only through July 11, 2026** (Anthropic extended the original July 7 date). From July 12, every Fable token is billed through **usage credits at $10/$50 per MTok** — and there is no automatic fallback: if credits aren't enabled, access simply stops.
+Anthropic's [official redeployment terms](https://www.anthropic.com/news/redeploying-fable-5): Fable 5 was included in Pro/Max/Team plans (up to 50% of weekly limits) **only through July 11, 2026** (Anthropic extended the original July 7 date). Since July 12, every Fable token is billed through **usage credits at $10/$50 per MTok** — and there is no automatic fallback: if credits aren't enabled, access simply stops.
 
 This changes the economics from *quota hygiene* to *direct money*:
 
@@ -160,7 +160,7 @@ Three levers, combined:
 The brain is **configurable, not hardcoded** — because models get suspended (Fable already was, once), renamed, and superseded:
 
 ```bash
-amiral                      # brain = fable (default), hands = sonnet
+amiral                      # brain = opus (default), hands = sonnet
 AMIRAL_BRAIN=opus amiral    # same fleet, Opus brain — one env var, zero edits
 AMIRAL_HANDS=claude-sonnet-5 amiral   # pin an exact worker model ID
 ```
@@ -176,18 +176,19 @@ The pattern outlives any single model. That's the point.
 | 🅐 **reviewer** | [`agents/reviewer.md`](agents/reviewer.md) | Fresh-context review right after implementation. Read-only tools, prioritized report. |
 | 🧭 **advisor** | [`agents/advisor.md`](agents/advisor.md) | The expensive brain, consulted on demand: a cheap executor calls it for hard judgment calls (plan review, architecture, tradeoffs) then takes back control. Powers `amiral-advisor`. |
 | 💰 **butin** | [`bin/amiral-butin`](bin/amiral-butin) + [`lib/butin/`](lib/butin/) | Proves amiral's ROI from your own routed tasks: net counterfactual savings (escalations and brain premium deducted), coverage shown, 100% local. Wire once: [docs/butin.md](docs/butin.md). POSIX-only for now. |
-| 🧾 **journal** | [`bin/amiral-journal`](bin/amiral-journal) | Provenance for AI-assisted commits: opt-in git trailers (Route, Verified, Attest — a recomputable sha256 of verify.sh + the staged diff). `note` mode survives squash-merges. `flag` prints the pavillon badge (refuses under 20 measured tasks). |
+| 🧾 **journal** | [`bin/amiral-journal`](bin/amiral-journal) | Provenance for AI-assisted commits: opt-in git trailers — `Amiral-Route` and `Amiral-Diff-Digest` (a recomputable sha256 of verify.sh's bytes + the commit's diff — proves what was present, not what was run). `note` mode survives squash-merges. `flag` prints the pavillon badge (refuses under 20 measured tasks). |
+| 📟 **statusline** | [`bin/amiral-statusline`](bin/amiral-statusline) | Opt-in Claude Code status-line integration: shows your net butin savings live (producer/cache/renderer), 100% local. `amiral statusline install`. |
 | 🗺️ **FLEET.md** | [`templates/FLEET.md`](templates/FLEET.md) | AI-policy-as-code: commit the fleet policy of THIS repo; amiral reads it and it overrides personal defaults. Changed by PR, like code. |
 | 🏴 **corsaire** | [`agents/corsaire.md`](agents/corsaire.md) | Licensed adversary: pre-mortem attack on risky or vibe-coded features — assumes it already failed in production, works backward to every cause. Read-only, hostile, concrete. |
 | 🅢 **/plan-ship** | [`skills/plan-ship/SKILL.md`](skills/plan-ship/SKILL.md) | One command: plan → delegate → verify → review → summary. Never commits without your OK. |
 | 📜 **Routing policy** | [`CLAUDE.md`](CLAUDE.md) | Persistent memory: orchestrator role, anti-fan-out discipline, mandatory verification. |
 | ⚡ **Fleet profiles** | [`shell/`](shell/) | `amiral`, `amiral-fine`, `amiral-ultra`, `matelot` — bash/zsh **and** PowerShell. Safe permission defaults. |
 | ✅ **verify.sh template** | [`templates/verify-nextjs.sh`](templates/verify-nextjs.sh) | Machine-verifiable "done" gate (typecheck + lint + build). |
-| 🔌 **Plugin manifests** | [`.claude-plugin/`](.claude-plugin/) | Install as a native Claude Code plugin — no scripts to run. |
+| 🔌 **Plugin manifests** | [`.claude-plugin/`](.claude-plugin/) | Install as a native Claude Code plugin — gets you the 5 agents + `/amiral:plan-ship`, no scripts to run. Does NOT install butin, journal, statusline, doctor, backfill, the shell profiles, or the global routing policy — those need `./install.sh`. |
 | 📊 **Benchmark protocol** | [`BENCHMARKS.md`](BENCHMARKS.md) | Reproducible A/B/C measurement protocol + community results table. |
 | 🌍 **Portable pattern** | [`PATTERN.md`](PATTERN.md) + [`ports/AGENTS.md`](ports/AGENTS.md) | The CLI-agnostic spec and the matelot discipline in the AGENTS.md standard — usable by 25+ non-Claude tools. |
 | 🩺 **amiral doctor** | [`bin/amiral-doctor`](bin/amiral-doctor) | One command to check install, version, and routing config — catches the silent-fallback quota bleed. |
-| 🔐 **amiral-trust** | [`bin/amiral-trust`](bin/amiral-trust) | Per-repo, checksum-pinned trust for the verification hook — so it never runs an untrusted repo's verify.sh. |
+| 🔐 **amiral-trust** | [`bin/amiral-trust`](bin/amiral-trust) | Per-repo, opt-in trust for the verification hook: the checksum pins `verify.sh`'s own bytes + the repo's identity, and re-requires trust on any edit. Scope limit: anything `verify.sh` sources or execs runs unfingerprinted — trusting a repo means trusting its whole build. [docs/hooks.md](docs/hooks.md). |
 | 🪝 **Verification hook** | [`hooks/`](hooks/) + [docs/hooks.md](docs/hooks.md) | Opt-in `SubagentStop` gate: workers can't finish while `./verify.sh` fails. Policies ask; hooks enforce. |
 
 This repo **dogfoods itself**: clone it, open Claude Code inside, and the routing config in `.claude/` is live (CI keeps it in sync with the canonical `agents/` and `skills/`).
@@ -231,7 +232,7 @@ claude update   # Sonnet 5 needs v2.1.197+
 | `amiral-ultra` | `$AMIRAL_BRAIN` + ultracode | forced `$AMIRAL_HANDS` | Big audits **only**. Then `/effort` → `ultracode`. 🔥 Quota incinerator. |
 | `matelot` | — | `$AMIRAL_HANDS` @ high | Everything that doesn't deserve the brain. The matelot discipline itself is [portable to 25+ tools](ports/AGENTS.md). |
 
-Defaults: `AMIRAL_BRAIN=fable`, `AMIRAL_HANDS=sonnet`.
+Defaults: `AMIRAL_BRAIN=opus`, `AMIRAL_HANDS=sonnet` (only `amiral-ultra` falls back to Fable).
 
 Inside a session:
 
@@ -320,14 +321,14 @@ The **implementation** here is Claude Code (native routing primitives). The **pa
 
 One repo, three layers: universal pattern → portable discipline → Claude Code reference implementation.
 
-**"Can the admiral call GPT or Gemini?"** Not from inside Claude Code — subagents run on Anthropic models, by design. Routing to other vendors means a proxy/gateway you'd host and maintain (that's a framework, not 6 files). The clean answer is the portable layer above: run the amiral *pattern* on a tool that already speaks many LLMs — OpenCode (75+ providers), Aider, Codex — via [`ports/AGENTS.md`](ports/AGENTS.md). amiral stays small and native; multi-vendor lives where it belongs.
+**"Can the admiral call GPT or Gemini?"** Not from inside Claude Code — subagents run on Anthropic models, by design. Routing to other vendors means a proxy/gateway you'd host and maintain (that's a framework, not 7 files). The clean answer is the portable layer above: run the amiral *pattern* on a tool that already speaks many LLMs — OpenCode (75+ providers), Aider, Codex — via [`ports/AGENTS.md`](ports/AGENTS.md). amiral stays small and native; multi-vendor lives where it belongs.
 
 ## 🪶 Not a framework
 
 The 2026 orchestration landscape is crowded with platforms — the leading one ships **250,000+ lines** of engine and is **API-only, blocked on Pro/Max subscriptions**. amiral takes the opposite bet:
 
 - **7 markdown files** and native Claude Code primitives. Nothing to adopt, no engine to break on the next release.
-- **Works on your subscription.** No API key required — it's just configuration. (With a Fable brain after July 11, only the *brain* needs usage credits — the whole point is minimizing those tokens. Or run `AMIRAL_BRAIN=opus` and stay fully inside your plan.)
+- **Works on your subscription.** No API key required — it's just configuration. (Now that Fable is metered, only the *brain* needs usage credits — the whole point is minimizing those tokens. Or run `AMIRAL_BRAIN=opus` and stay fully inside your plan.)
 - When you truly need swarm topologies and consensus protocols, graduate to a framework — and take the amiral policy with you.
 
 Full honest comparison (Ruflo, Code Kit, Octopus, Maestro, opusplan): [docs/landscape.md](docs/landscape.md).

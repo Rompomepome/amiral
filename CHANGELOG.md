@@ -1,5 +1,157 @@
 # Changelog
 
+## v0.15.2 - 2026-07-20
+**Front-door truth pass — the README sold guarantees the code no longer
+backs, the same class of defect as a false provenance trailer.**
+- **Trust gate claim rewritten to the guarantee that holds.** The README
+  pitched `amiral-trust` as "checksum-pinned … so it never runs an
+  untrusted repo's verify.sh" — the exact guarantee AUDIT-FABLE H9
+  disproved and v0.15.1 already removed from docs/hooks.md. Now matches
+  the code: the checksum pins verify.sh's own bytes + the repo identity;
+  anything it sources or execs runs unfingerprinted, so trusting a repo
+  means trusting its whole build. "tamper-evident" and "never runs
+  untrusted" are gone from both READMEs.
+- **Default brain corrected fable → opus.** The fleet table said
+  `AMIRAL_BRAIN=fable` while the code (`${AMIRAL_BRAIN:-opus}`) and
+  install.sh both default opus. Fixed in the model-agnostic example and
+  the table; `amiral-ultra` is the one profile that still falls back to
+  Fable, and is now stated as the exception rather than the rule.
+- **Plugin route stated honestly.** "Install as a native plugin — no
+  scripts to run" overstated what it gives you: the plugin ships the
+  agents + `/amiral:plan-ship` only. The row now says plainly it does
+  NOT install butin, the journal, the statusline, doctor, backfill, the
+  shell profiles, or the global routing policy — those need
+  `./install.sh`.
+- **The measurement/provenance layer was invisible at the front door.**
+  Added a statusline row to "What's inside", and fixed the journal row
+  (plus a takeaways bullet) that still named the removed
+  `Verified`/`Attest` trailers instead of the live
+  `Route`/`Diff-Digest` — the same dead-trailer claim v0.14.0 fixed
+  elsewhere, missed here because the CI guard only grepped for the
+  hyphenated `Amiral-`-prefixed forms.
+- **The Fable cliff rewritten as past-tense fact.** It was future-framed
+  ("why this matters right now", "metered after July 11") past the
+  July 12 cutover — now the redeployment terms read as the event that
+  already happened.
+- **README.fr.md carried the same drift** (dead trailers, future tense,
+  plugin overclaim, a stale "6 fichiers") and got the parallel
+  corrections. It drifted before because the trailer CI guard only
+  grepped the English README.
+- **Two drift guards so this can't come back.** The dead-trailer guard
+  is now case-insensitive, and a new guard fails CI if either README
+  claims the trust gate prevents running untrusted code or calls it
+  tamper-evident — order-agnostic, so it catches rewordings ("never runs
+  untrusted", "untrusted code never runs", "tamper evident" without the
+  hyphen) while still allowing the honest scoped "refuses to run
+  untrusted … until you trust it".
+- **`AMIRAL_CONSENT_TIMEOUT`** (default 60, digits-only-validated, min 1,
+  else 60): the `--with-cost` consent `read` opens the real `/dev/tty`,
+  so a redirected stdin doesn't neutralize it — J-17/J-20/J-21 each
+  blocked ~60s on a developer machine (CI has no controlling tty, so it
+  never showed there). The tests set it to 1. Shortening the timeout
+  only makes the gate fail closed FASTER — it can NEVER skip the prompt;
+  the sole non-interactive consent path remains the explicit `--yes`.
+  Journal battery: ~3 min → ~4.5 s.
+- Consistency: the "N markdown files" framing is now uniformly 7
+  (5 agents + CLAUDE.md + SKILL.md) across both READMEs, and
+  `.claude-plugin/plugin.json` bumped 0.12.2 → 0.15.2 to match the
+  shipped version.
+
+## v0.15.1 - 2026-07-20
+**Security lot (C6/H9/L5/L10 + TOCTOU + a FIFO DoS), and a BSD-first
+`stat` chain that corrupted the discovery ts on Linux — the validation,
+not the ordering, is what protects.**
+- **C6: the `--with-cost` consent gate now fails closed on ANY network
+  remote.** The old check only matched `github.com|gitlab.com`, so
+  publishing the `Amiral-Net-Saved` cost trailer onto a Bitbucket,
+  Codeberg, self-hosted, or `git@host:` ssh remote skipped the consent
+  warning entirely — a hostname denylist can never enumerate every
+  public forge. Inverted: any remote pointing at a network host is
+  consent-worthy; only filesystem paths and loopback are skipped
+  (over-asking on a private host is harmless, missing a public one is
+  the leak). No controlling terminal and no explicit `--yes` now
+  REFUSES — the hook is not written — instead of the warning printing
+  and being instantly swallowed.
+- **H9: the trust gate's docs now state the guarantee that actually
+  holds.** docs/hooks.md and the amiral-trust / hook headers dropped
+  "tamper-evident": the checksum pins verify.sh's OWN bytes only, and
+  anything it sources or execs (helper scripts, `npm test`, a Makefile,
+  node_modules) runs unfingerprinted. Static `source`/`exec` detection
+  and hashing the transitive read-set were both rejected as unsound in
+  shell (a build reads files chosen at runtime by `$PATH`/`npm`/`make`);
+  the honest scope is "trusting a repo means trusting its build."
+- **TOCTOU:** the hook re-hashes verify.sh immediately before running
+  it and refuses on mismatch, shrinking the check→run window where the
+  file could be swapped after the trust match.
+- **L10: trust bound to repo identity.** The fingerprint gained a third
+  field (`repo_root::sha::identity`, identity = remote origin URL, else
+  the root commit), so a DIFFERENT repo checked out at a
+  previously-trusted path with a byte-identical verify.sh no longer
+  inherits trust ACCIDENTALLY. Stated honestly in docs and
+  AUDIT-FABLE: this is NOT an authentication boundary — a local attacker
+  who already controls the checkout can forge the origin URL; it closes
+  the accidental collision, not a deliberate repo-swap. Old two-field
+  entries stop matching; previously-trusted repos re-run `amiral-trust`
+  once (the safe direction).
+- **L5:** the non-git `|| pwd` fallback returned the logical path while
+  git returns the physical one (`/tmp` → `/private/tmp` on macOS),
+  yielding two fingerprints for one directory — now `pwd -P` in all
+  three sites (trust, hook, doctor).
+- **FIFO DoS:** `[ -x ./verify.sh ]` was true for an executable FIFO,
+  and `shasum` on a FIFO with no writer blocks forever — upstream of the
+  300s timeout wrapper. A `-f` regular-file guard closes it in the hook
+  and doctor (git can't check out a FIFO, but a build step or a tar
+  entry can drop one).
+- **BSD-first `stat` chain corrupted the discovery ts on Linux**
+  (surfaced by test-butin D-5 going red on ubuntu). `stat -f %m … ||
+  stat -c %Y` is unsafe in that order: on GNU, `-f` means
+  `--file-system`, so `%m` is parsed as a FILENAME — stat prints
+  filesystem info to stdout AND exits non-zero, so the `||` appends the
+  epoch to that garbage (multi-line, non-numeric), and `date` then fails
+  both ways. Flipped to GNU-first, and — the load-bearing part —
+  VALIDATE the result is digits-only after each form (same for the
+  `date -d @epoch` / `date -r epoch` pair): it is the validation, not
+  the ordering, that protects; empty/invalid degrades to the documented
+  default instead of propagating. Never chain on exit status alone when
+  the failing branch can write to stdout. A D-5b regression fails if a
+  non-numeric epoch is ever accepted.
+- A new `tests/test-trust.sh` battery (H9-honesty, L10 repro, TOCTOU,
+  L5, FIFO, fingerprint agreement across the three sites) and
+  consent-gate journal tests (Bitbucket + ssh repros); CI runs the trust
+  battery on both ubuntu and macOS.
+
+## v0.15.0 - 2026-07-19
+**Attribution split — the report credited amiral for routing it never
+performed, the single most attackable claim in the tool.**
+- **The headline NET summed every worker agent**, including subagents
+  Claude Code (or a user's own custom agent) spawned on their own — so
+  "net saved" attributed savings to amiral that it never routed. A live
+  backfill over six weeks surfaced 9 agent types; only 5 are amiral's
+  (the ones it ships in `agents/`). `core.awk` now partitions every
+  worker event (and its escalation cost) into an amiral bucket and an
+  "other" bucket, and the report hero, the statusline (`net_total`), the
+  pavillon badge, AND the `--with-cost` commit trailer all show
+  amiral-routed savings ONLY.
+- **Other subagent activity is still measured** — it is real data — and
+  shown on its own clearly-labelled line, never mixed into the amiral
+  figure. The brain keeps its own premium accounting, in neither bucket.
+  A user's own custom agent falls in "other" (amiral did not route it).
+- **The amiral agent set is derived from what the repo actually ships,
+  not a hardcoded list that can drift.** It is materialized in
+  `lib/butin/amiral-agents.txt` and read through a shared
+  `lib/butin/agents.sh`, with a CI drift guard that fails if the
+  manifest and `agents/*.md` diverge — so the set can't silently widen
+  or narrow. An unset agent set degrades to legacy all-amiral output,
+  byte-identical to pre-split (every existing caller stays correct
+  without change).
+- **The `--with-cost` commit trailer was the fourth consumer** and was
+  emitting the mixed total; it now resolves the same manifest so the
+  `Amiral-Net-Saved` git trailer is amiral-routed only too, and the
+  pavillon badge's task count is amiral-routed (advertising a mixed
+  count next to an amiral-only net was the same over-claim one column
+  over). Documented in DESIGN-NOTES.md and docs/butin-spec-v2.md;
+  +9 butin / +2 statusline / +2 journal battery tests.
+
 ## v0.14.0 - 2026-07-18
 **Receipt-by-discovery (the butin was blind to workers), mixed-model
 pricing, an evidence-gated diagnostic, and journal wave 2 — stop

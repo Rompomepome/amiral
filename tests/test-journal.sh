@@ -330,6 +330,16 @@ else
   ko "J-16 trailer=[$MSG_J16]"
 fi
 
+# ─── J-17..J-21 (consent-gate block): on a dev machine have_tty() is true
+# ─── (the real controlling terminal), so the gate opens /dev/tty directly and
+# ─── </dev/null on the outer command doesn't stop it — a 60s read would block
+# ─── each of these ~60s waiting for input that never comes. Force a 1s
+# ─── timeout: the assertions below only require a fail-closed abort, which a
+# ─── 1s timeout on the dev-machine tty path still produces (see the
+# ─── AMIRAL_CONSENT_TIMEOUT comment in bin/amiral-journal — it only shortens
+# ─── the wait, it can never skip or auto-confirm consent).                ───
+export AMIRAL_CONSENT_TIMEOUT=1
+
 # ─── J-17 (v0.15.1, C6): --with-cost + public remote + NO TTY must be    ───
 # ─── refused — the cost-leaking hook must not be installed without real   ───
 # ─── consent.                                                             ───

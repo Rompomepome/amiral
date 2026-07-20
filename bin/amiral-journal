@@ -97,7 +97,19 @@ case "$CMD" in
         # read -t: a tty can be open (docker -t, an output-only pty) with no
         # human to type — an unbounded read would hang, not fail closed. Time
         # out and abort so "no confirmation" always means "not installed".
-        read -t 60 -r _ </dev/tty || { echo "Aborted: no confirmation was received."; exit 1; }
+        # AMIRAL_CONSENT_TIMEOUT only shortens this wait (dev/test convenience,
+        # e.g. tests run against a real controlling tty with no human present)
+        # — it can never SKIP or auto-confirm the prompt. A shorter timeout
+        # only makes the gate fail closed FASTER (timed-out read -> abort ->
+        # exit 1 -> hook NOT installed). The only non-interactive consent path
+        # is, and remains, the explicit --yes/--assume-yes flag above. Do NOT
+        # repurpose this variable into a skip/auto-yes switch.
+        _CT="${AMIRAL_CONSENT_TIMEOUT:-60}"
+        case "$_CT" in
+          ''|*[!0-9]*) _CT=60 ;;
+        esac
+        [ "$_CT" -ge 1 ] 2>/dev/null || _CT=60
+        read -t "$_CT" -r _ </dev/tty || { echo "Aborted: no confirmation was received."; exit 1; }
       else
         echo "Refusing to enable --with-cost: a remote was detected and there is no terminal available to ask for your confirmation." >&2
         echo "The Amiral-Net-Saved trailer would publish your dollar savings figures into every commit message pushed to this (possibly public) repository without your explicit consent." >&2
