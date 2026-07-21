@@ -609,6 +609,7 @@ fi
 # cheap-route success + honesty caveats
 MEAS=$(echo "$REPORT" | awk -F'\t' '/^MEASURED/{print $2}')
 UNMEAS=$(echo "$REPORT" | awk -F'\t' '/^UNMEASURED/{print $2}')
+PHANTOM=$(echo "$REPORT" | awk -F'\t' '/^PHANTOM/{print $2}')
 DUP=$(echo "$REPORT" | awk -F'\t' '/^DUP/{print $2}')
 VER=$(echo "$REPORT" | awk -F'\t' '/^VERIFIED/{print $2"/"($2+$3)}')
 # NOT `|| echo 0`: under pipefail, grep -c prints "0" AND exits 1 on a
@@ -624,6 +625,10 @@ COVNOTE=""
 [ "${UNMEAS:-0}" != "0" ] && COVNOTE="$COVNOTE · ${UNMEAS} unmeasurable (never invented)"
 [ "${DUP:-0}" != "0" ] && COVNOTE="$COVNOTE · ${DUP} duplicate(s) ignored"
 echo "  ${DIM}Coverage: ${MEAS:-0}/$TOTAL measured${COVNOTE}${RST}"
+# v0.16: phantom receipts (SubagentStop minted a transcript that was never
+# written — v0.14 finding) are excluded from the denominator above; shown
+# here on their own line so they stay visible without depressing coverage.
+[ "${PHANTOM:-0}" != "0" ] && echo "  ${DIM}${PHANTOM} phantom receipt(s) excluded from coverage (SubagentStop minted a transcript that was never written — v0.14 finding; see --detail)${RST}"
 UML=$(echo "$REPORT" | awk -F'\t' '/^UMODEL/{printf "%s (%s) ",$2,$3}')
 [ -n "$UML" ] && echo "  ${COPPER}unmeasured models: ${UML}— price them: amiral-butin add-model <id> <in_\$/Mtok> <out_\$/Mtok>${RST}"
 [ -n "$VER" ] && [ "$VER" != "0/0" ] && echo "  ${DIM}Verified through the gate: $VER measured tasks${RST}"
@@ -675,6 +680,12 @@ if [ "${1:-}" = "--detail" ]; then
   echo "  ${DIM}  Claude Code's own built-ins (e.g. general-purpose, Explore) or other tooling — amiral never routed it.${RST}"
   echo "  ${DIM}  A custom agent you define yourself also lands in 'other' — amiral didn't route that either. The brain${RST}"
   echo "  ${DIM}  is neither bucket: its premium (a penalty only) is deducted from the amiral NET, on its own accounting.${RST}"
+  echo "  ${DIM}• Phantom vs loss (v0.16.0 split): a receipt whose transcript never existed is noise the tool generated${RST}"
+  echo "  ${DIM}  about itself (v0.14 finding — SubagentStop fires for internal agents whose named transcript is never${RST}"
+  echo "  ${DIM}  written; every real worker transcript is already covered by the discovery scan) — excluded from${RST}"
+  echo "  ${DIM}  coverage. A transcript that DID exist and was later removed is a genuine LOSS: it stays IN the${RST}"
+  echo "  ${DIM}  coverage denominator, a real gap surfaced, never hidden. The ~48 events logged before this split${RST}"
+  echo "  ${DIM}  existed can't be told apart retroactively and are presumed phantom on the v0.14 evidence.${RST}"
 fi
 [ -n "${STALE:-}" ] && echo "" && echo "$STALE"
 case "$BSOURCE" in default*|"?") echo "  ${DIM}baseline is a default — set yours once: amiral-butin init${RST}";; esac

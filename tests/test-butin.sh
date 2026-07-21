@@ -71,9 +71,22 @@ AMIRAL_HOME="$A2" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
 E=$(cat "$A2/butin.jsonl" 2>/dev/null)
 echo "$E" | grep -q '"out": 750' && ok "V12 dedup by message.id (out=750, not 800 naive)" || ko "V12 dedup: $(echo "$E"|grep -o '\"out\": [0-9]*')"
 echo "$E" | grep -q '"agent": "corsaire"' && ok "V12 identity from .meta.json sidecar (not the hint)" || ko "V12 identity"
+# v0.16 UPDATE (source fix, see butin-receipt.sh header): a worker receipt
+# whose NAMED transcript does not exist on disk at hook time is now SKIPPED
+# at mint time (never appended to receipts.jsonl) rather than minted and
+# left pending forever/until TTL — the v0.14 finding is that such a firing
+# is a phantom (SubagentStop only fires for agents whose named transcript is
+# never written), and a real worker transcript is always covered by the
+# discovery scan instead. So this used to assert "pending 1"; it now
+# asserts the opposite: no receipt at all, pending 0.
 echo "{\"session_id\":\"S\",\"agent_type\":\"reviewer\",\"agent_transcript_path\":\"$T/s/subagents/agent-NOTYET.jsonl\"}" \
   | AMIRAL_HOME="$A2" bash "$HERE/adapters/claude-code/butin-receipt.sh"
-AMIRAL_HOME="$A2" python3 "$HERE/lib/butin/measure.py" 2>/dev/null | grep -q "pending 1" && ok "V12 missing transcript stays PENDING (never invented)" || ko "V12 pending"
+if ! grep -q "agent-NOTYET" "$A2/receipts.jsonl" 2>/dev/null; then
+  ok "V12 missing transcript at mint time is SKIPPED, not invented-then-pending (v0.16 source fix)"
+else
+  ko "V12 missing-transcript receipt=[$(cat "$A2/receipts.jsonl" 2>/dev/null)]"
+fi
+AMIRAL_HOME="$A2" python3 "$HERE/lib/butin/measure.py" 2>/dev/null | grep -q "pending 0" && ok "V12 no phantom pending from the skipped receipt" || ko "V12 pending should be 0"
 AMIRAL_HOME="$A2" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
 N=$(grep -c '"real_cost_usd"' "$A2/butin.jsonl")
 [ "$N" = "1" ] && ok "V12 idempotent (re-run doesn't double-count)" || ko "V12 idempotent: $N events"
@@ -203,18 +216,22 @@ rm -f "$ERR7"
 # drained from receipts.jsonl.
 export BUTIN_PRICES="$HERE/lib/butin/pricing.tsv"
 
-# TTL-1 expired: transcript absent, receipt older than default TTL (48h)
+# TTL-1 expired: transcript absent, receipt older than default TTL (48h).
+# No "observed" field on this receipt (pre-v0.16.0 shape / never-observed) ->
+# v0.16.0 PHANTOM/LOSS SPLIT classifies this as phantom (new wording, not the
+# legacy exact string — that string is only ever read back from ALREADY
+# emitted pre-v0.16.0 events, never written by measure.py again).
 AT1="$(mktemp -d)"
 printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$AT1/butin-config.json"
 TS49=$(date -u -v-49H +%FT%TZ 2>/dev/null || date -u -d '49 hours ago' +%FT%TZ)
 printf '{"v":2,"id":"ttlX","ts":"%s","role":"worker","session":"s","agent_hint":"grunt","transcript":"/nonexistent/agent-gone.jsonl","cwd":"/x","measured":false}\n' "$TS49" > "$AT1/receipts.jsonl"
 OUT1=$(AMIRAL_HOME="$AT1" python3 "$HERE/lib/butin/measure.py")
-if grep -q "transcript absent (never written or removed)" "$AT1/butin.jsonl" 2>/dev/null \
+if grep -q "transcript never written (phantom" "$AT1/butin.jsonl" 2>/dev/null \
    && grep -q '"receipt": "ttlX"' "$AT1/butin.jsonl" 2>/dev/null \
    && ! grep -q "ttlX" "$AT1/receipts.jsonl" 2>/dev/null \
    && echo "$OUT1" | grep -q "unmeasurable 1" \
    && echo "$OUT1" | grep -q "pending 0"; then
-  ok "TTL-1 receipt older than TTL (49h>48h), transcript absent -> unmeasurable, drained"
+  ok "TTL-1 receipt older than TTL (49h>48h), transcript absent (no observed field) -> phantom, drained"
 else
   ko "TTL-1 out=[$OUT1] events=[$(cat "$AT1/butin.jsonl" 2>/dev/null)] receipts=[$(cat "$AT1/receipts.jsonl" 2>/dev/null)]"
 fi
@@ -236,7 +253,7 @@ fi
 
 # TTL-3 idempotence: re-run measure.py on AT1 -> exactly ONE event for ttlX
 AMIRAL_HOME="$AT1" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
-NTTL=$(grep -c "transcript absent (never written or removed)" "$AT1/butin.jsonl" 2>/dev/null)
+NTTL=$(grep -c "transcript never written (phantom" "$AT1/butin.jsonl" 2>/dev/null)
 [ "$NTTL" = "1" ] && ok "TTL-3 idempotent: re-run doesn't duplicate the unmeasurable event" || ko "TTL-3 count=$NTTL"
 
 # TTL-4 knob: young-side receipt + BUTIN_RECEIPT_TTL_HOURS=0 -> expires immediately
@@ -244,7 +261,7 @@ AT4="$(mktemp -d)"
 printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$AT4/butin-config.json"
 printf '{"v":2,"id":"ttlZ","ts":"%s","role":"worker","session":"s","agent_hint":"grunt","transcript":"/nonexistent/agent-gone.jsonl","cwd":"/x","measured":false}\n' "$TSNOW" > "$AT4/receipts.jsonl"
 OUT4T=$(AMIRAL_HOME="$AT4" BUTIN_RECEIPT_TTL_HOURS=0 python3 "$HERE/lib/butin/measure.py")
-if grep -q "transcript absent (never written or removed)" "$AT4/butin.jsonl" 2>/dev/null \
+if grep -q "transcript never written (phantom" "$AT4/butin.jsonl" 2>/dev/null \
    && grep -q '"receipt": "ttlZ"' "$AT4/butin.jsonl" 2>/dev/null \
    && ! grep -q "ttlZ" "$AT4/receipts.jsonl" 2>/dev/null \
    && echo "$OUT4T" | grep -q "unmeasurable 1"; then
@@ -305,6 +322,69 @@ else
   ko "TTL-7 out=[$OUT7T] events=[$(cat "$AT7/butin.jsonl" 2>/dev/null)]"
 fi
 
+# ─── v0.16.0 PHANTOM/LOSS SPLIT: the receipt's own "observed" field (set at
+# mint time by butin-receipt.sh) decides whether an absent-transcript
+# expiry is noise (never written) or a real loss (existed, then removed).
+# ───
+
+# TTL-8: "observed":true + transcript absent past TTL -> LOSS. reason
+# contains "removed"; core.awk must count it UNMEASURED (stays IN the
+# coverage denominator), NOT phantom.
+AT8="$(mktemp -d)"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$AT8/butin-config.json"
+printf '{"v":2,"id":"ttlLoss","ts":"%s","role":"worker","session":"s","agent_hint":"grunt","transcript":"/nonexistent/agent-was-here.jsonl","cwd":"/x","measured":false,"observed":true}\n' "$TS49B" > "$AT8/receipts.jsonl"
+OUT8T=$(AMIRAL_HOME="$AT8" python3 "$HERE/lib/butin/measure.py")
+if grep -q '"reason": "transcript removed after it was recorded (existed at mint, measurement lost)"' "$AT8/butin.jsonl" 2>/dev/null \
+   && grep -q '"receipt": "ttlLoss"' "$AT8/butin.jsonl" 2>/dev/null \
+   && echo "$OUT8T" | grep -q "unmeasurable 1"; then
+  ok "TTL-8 observed:true + absent past TTL -> LOSS reason (contains 'removed')"
+else
+  ko "TTL-8 out=[$OUT8T] events=[$(cat "$AT8/butin.jsonl" 2>/dev/null)]"
+fi
+AT8_REPORT=$(awk -f "$HERE/lib/butin/core.awk" "$AT8/butin.jsonl")
+AT8_PHANTOM=$(echo "$AT8_REPORT" | awk -F'\t' '/^PHANTOM/{print $2}')
+AT8_UNMEAS=$(echo "$AT8_REPORT" | awk -F'\t' '/^UNMEASURED/{print $2}')
+if [ "${AT8_PHANTOM:-x}" = "0" ] && [ "${AT8_UNMEAS:-x}" = "1" ]; then
+  ok "TTL-8b core.awk: a LOSS event counts UNMEASURED (denominator), never PHANTOM"
+else
+  ko "TTL-8b phantom=$AT8_PHANTOM unmeas=$AT8_UNMEAS report=[$AT8_REPORT]"
+fi
+
+# TTL-9: "observed":false + transcript absent past TTL -> PHANTOM. reason
+# contains "phantom"; core.awk must count it PHANTOM (excluded).
+AT9="$(mktemp -d)"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$AT9/butin-config.json"
+printf '{"v":2,"id":"ttlPh","ts":"%s","role":"worker","session":"s","agent_hint":"grunt","transcript":"/nonexistent/agent-never-was.jsonl","cwd":"/x","measured":false,"observed":false}\n' "$TS49B" > "$AT9/receipts.jsonl"
+OUT9T=$(AMIRAL_HOME="$AT9" python3 "$HERE/lib/butin/measure.py")
+if grep -q '"reason": "transcript never written (phantom' "$AT9/butin.jsonl" 2>/dev/null \
+   && grep -q '"receipt": "ttlPh"' "$AT9/butin.jsonl" 2>/dev/null \
+   && echo "$OUT9T" | grep -q "unmeasurable 1"; then
+  ok "TTL-9 observed:false + absent past TTL -> phantom reason (contains 'phantom')"
+else
+  ko "TTL-9 out=[$OUT9T] events=[$(cat "$AT9/butin.jsonl" 2>/dev/null)]"
+fi
+AT9_REPORT=$(awk -f "$HERE/lib/butin/core.awk" "$AT9/butin.jsonl")
+AT9_PHANTOM=$(echo "$AT9_REPORT" | awk -F'\t' '/^PHANTOM/{print $2}')
+AT9_UNMEAS=$(echo "$AT9_REPORT" | awk -F'\t' '/^UNMEASURED/{print $2}')
+if [ "${AT9_PHANTOM:-x}" = "1" ] && [ "${AT9_UNMEAS:-x}" = "0" ]; then
+  ok "TTL-9b core.awk: a phantom event counts PHANTOM (excluded), never UNMEASURED"
+else
+  ko "TTL-9b phantom=$AT9_PHANTOM unmeas=$AT9_UNMEAS report=[$AT9_REPORT]"
+fi
+
+# TTL-10: LEGACY exact reason string (pre-v0.16.0, no "observed" field ever
+# existed for these) still counts PHANTOM in core.awk — the ~48 already-
+# emitted events must not shift into UNMEASURED under the new rule.
+AT10="$(mktemp -d)"
+printf '{"v":2,"receipt":"legacy1","unmeasurable":true,"reason":"transcript absent (never written or removed)"}\n' > "$AT10/legacy.jsonl"
+AT10_REPORT=$(awk -f "$HERE/lib/butin/core.awk" "$AT10/legacy.jsonl")
+AT10_PHANTOM=$(echo "$AT10_REPORT" | awk -F'\t' '/^PHANTOM/{print $2}')
+AT10_UNMEAS=$(echo "$AT10_REPORT" | awk -F'\t' '/^UNMEASURED/{print $2}')
+if [ "${AT10_PHANTOM:-x}" = "1" ] && [ "${AT10_UNMEAS:-x}" = "0" ]; then
+  ok "TTL-10 legacy exact reason string still counts PHANTOM (pre-v0.16.0 events can't be split)"
+else
+  ko "TTL-10 phantom=$AT10_PHANTOM unmeas=$AT10_UNMEAS report=[$AT10_REPORT]"
+fi
 
 
 # ─── v0.14.0 mixed-model cold measurement (AUDIT-FABLE C2, brain path) ───
@@ -551,6 +631,17 @@ if grep -qF "$Tdisc1/S/subagents/agent-d1.jsonl" "$Adisc1/receipts.jsonl" 2>/dev
 else
   ko "D-1 receipts=[$(cat "$Adisc1/receipts.jsonl" 2>/dev/null)]"
 fi
+# D-1c (v0.16.0): every receipt minted here points at a file confirmed
+# present on disk (the discovery scan's own `[ -f "$AT" ]` guard, and the
+# brain branch's main transcript that the Stop hook just wrote) -> ALL
+# lines in this batch must carry "observed":true.
+D1_LINES=$(grep -c '.' "$Adisc1/receipts.jsonl" 2>/dev/null); D1_LINES=${D1_LINES:-0}
+D1_OBSERVED_TRUE=$(grep -c '"observed":true' "$Adisc1/receipts.jsonl" 2>/dev/null); D1_OBSERVED_TRUE=${D1_OBSERVED_TRUE:-0}
+if [ "$D1_LINES" -gt 0 ] && [ "$D1_LINES" = "$D1_OBSERVED_TRUE" ]; then
+  ok "D-1c discovery + brain receipts all carry \"observed\":true (transcript confirmed present at mint)"
+else
+  ko "D-1c lines=$D1_LINES observed_true=$D1_OBSERVED_TRUE receipts=[$(cat "$Adisc1/receipts.jsonl" 2>/dev/null)]"
+fi
 AMIRAL_HOME="$Adisc1" BUTIN_STABLE_SECS=0 python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
 EVDISC1=$(cat "$Adisc1/butin.jsonl" 2>/dev/null)
 if echo "$EVDISC1" | grep -q '"agent": "grunt"' && echo "$EVDISC1" | grep -q '"agent": "reviewer"' \
@@ -602,15 +693,16 @@ else
 fi
 
 # D-4: phantom fast-expiry — the default TTL is now 6h (was 48h): a
-# receipt whose transcript was NEVER written (the observed real-world
-# case) must expire well inside a day, not linger for two.
+# receipt whose transcript was NEVER written ("observed":false — the
+# real-world SubagentStop-noise case) must expire well inside a day, not
+# linger for two.
 Adisc4="$(mktemp -d)"
 printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$Adisc4/butin-config.json"
 TS7H=$(date -u -v-7H +%FT%TZ 2>/dev/null || date -u -d '7 hours ago' +%FT%TZ)
-printf '{"v":2,"id":"phantom1","ts":"%s","role":"worker","session":"s","agent_hint":"","transcript":"/nonexistent/agent-phantom.jsonl","cwd":"/x","measured":false}\n' "$TS7H" > "$Adisc4/receipts.jsonl"
+printf '{"v":2,"id":"phantom1","ts":"%s","role":"worker","session":"s","agent_hint":"","transcript":"/nonexistent/agent-phantom.jsonl","cwd":"/x","measured":false,"observed":false}\n' "$TS7H" > "$Adisc4/receipts.jsonl"
 OUTD4=$(AMIRAL_HOME="$Adisc4" python3 "$HERE/lib/butin/measure.py")
 if grep -q '"receipt": "phantom1"' "$Adisc4/butin.jsonl" 2>/dev/null \
-   && grep -q '"reason": "transcript absent (never written or removed)"' "$Adisc4/butin.jsonl" 2>/dev/null \
+   && grep -q '"reason": "transcript never written (phantom' "$Adisc4/butin.jsonl" 2>/dev/null \
    && ! grep -q "phantom1" "$Adisc4/receipts.jsonl" 2>/dev/null \
    && echo "$OUTD4" | grep -q "unmeasurable 1"; then
   ok "D-4 phantom fast-expiry: 7h-old absent-transcript receipt expires under the new 6h default, drained"
@@ -1183,9 +1275,124 @@ fi
 L_OTASKS=$(echo "$LEGACY_REPORT" | awk -F'\t' '/^OTHER_TASKS/{print $2}')
 [ "${L_OTASKS:-x}" = "0" ] && ok "V15 legacy OTHER_TASKS=0 (split is a no-op when unset)" || ko "V15 legacy OTHER_TASKS=$L_OTASKS"
 
+# ─── v0.16 phantom receipts: "transcript absent" is the tool's own noise,
+# not lost work (v0.14 finding) — excluded from the coverage denominator,
+# counted on its own PHANTOM line. "unknown pricing_id" (a genuine gap on
+# real work) is untouched: stays in UNMEASURED and the denominator. ───
+
+# PH-1: core.awk directly — 2 measured amiral events, 1 phantom-reason
+# unmeasurable, 1 unknown-pricing-id unmeasurable.
+APH1="$(mktemp -d)"
+cat > "$APH1/phantom.jsonl" << 'EOF'
+{"v":1,"id":"ph1","agent":"grunt","real_cost_usd":0.01,"counterfactual_cost_usd":0.05,"outcome":"ok"}
+{"v":1,"id":"ph2","agent":"grunt","real_cost_usd":0.02,"counterfactual_cost_usd":0.06,"outcome":"ok"}
+{"v":1,"id":"ph3","unmeasurable":true,"reason":"transcript absent (never written or removed)"}
+{"v":1,"id":"ph4","unmeasurable":true,"reason":"unknown pricing_id","model":"<synthetic>"}
+EOF
+PHREPORT=$(awk -f "$HERE/lib/butin/core.awk" "$APH1/phantom.jsonl")
+PH_PHANTOM=$(echo "$PHREPORT" | awk -F'\t' '/^PHANTOM/{print $2}')
+PH_UNMEAS=$(echo "$PHREPORT" | awk -F'\t' '/^UNMEASURED/{print $2}')
+PH_MEAS=$(echo "$PHREPORT" | awk -F'\t' '/^MEASURED/{print $2}')
+if [ "${PH_PHANTOM:-x}" = "1" ] && [ "${PH_UNMEAS:-x}" = "1" ] && [ "${PH_MEAS:-x}" = "2" ]; then
+  ok "PH-1 core.awk: PHANTOM=1 (the transcript-absent event), UNMEASURED=1 (the pricing_id event, NOT the phantom), MEASURED=2"
+else
+  ko "PH-1 phantom=$PH_PHANTOM unmeas=$PH_UNMEAS meas=$PH_MEAS report=[$PHREPORT]"
+fi
+
+# PH-2: same fixture through the amiral-butin report — Coverage denominator
+# (measured+unmeasured+pending) excludes the phantom (denominator=3, not 4),
+# the unknown-pricing gap is still surfaced (unmeasured models line), and a
+# dedicated phantom line appears, dim and clearly labelled.
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$APH1/butin-config.json"
+mv "$APH1/phantom.jsonl" "$APH1/butin.jsonl"
+OUTPH2=$(AMIRAL_HOME="$APH1" CLAUDE_CONFIG_DIR="$AC" NO_COLOR=1 bash "$HERE/bin/amiral-butin")
+if echo "$OUTPH2" | grep -q "Coverage: 2/3 measured" \
+   && echo "$OUTPH2" | grep -q "1 phantom receipt(s) excluded from coverage" \
+   && echo "$OUTPH2" | grep -q "unmeasured models:.*<synthetic>"; then
+  ok "PH-2 amiral-butin report: Coverage 2/3 (phantom excluded from denominator), phantom line shown, pricing gap still surfaced"
+else
+  ko "PH-2 out=[$(echo "$OUTPH2" | grep -i "coverage\|phantom\|unmeasured models")]"
+fi
+
+# PH-3: --detail carries the phantom/loss explanation bullet (v0.16.0 split).
+OUTPH3=$(AMIRAL_HOME="$APH1" CLAUDE_CONFIG_DIR="$AC" NO_COLOR=1 bash "$HERE/bin/amiral-butin" --detail)
+echo "$OUTPH3" | grep -q "Phantom vs loss" && ok "PH-3 --detail: phantom/loss honesty bullet present" || ko "PH-3 --detail missing phantom bullet"
+
+# PH-4: butin-receipt.sh source fix — a worker receipt whose named transcript
+# does NOT exist on disk at hook time is skipped (not minted); one whose
+# transcript DOES exist is minted normally. Real temp file for the exists
+# case, a bogus path for the absent case, same AMIRAL_HOME (isolates the
+# dedup guard from the existence guard: two DIFFERENT transcript paths).
+APH4="$(mktemp -d)"
+TPH4="$(mktemp -d)"
+EXIST_FILE="$TPH4/agent-real.jsonl"
+printf '{"message":{"id":"x1","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' > "$EXIST_FILE"
+ABSENT_FILE="$TPH4/agent-absent.jsonl"   # deliberately never created
+echo "{\"session_id\":\"PH4\",\"agent_type\":\"grunt\",\"agent_transcript_path\":\"$EXIST_FILE\"}" \
+  | AMIRAL_HOME="$APH4" bash "$HERE/adapters/claude-code/butin-receipt.sh"
+echo "{\"session_id\":\"PH4\",\"agent_type\":\"grunt\",\"agent_transcript_path\":\"$ABSENT_FILE\"}" \
+  | AMIRAL_HOME="$APH4" bash "$HERE/adapters/claude-code/butin-receipt.sh"
+PH4_LINES=$(grep -c '.' "$APH4/receipts.jsonl" 2>/dev/null); PH4_LINES=${PH4_LINES:-0}
+if grep -qF "$EXIST_FILE" "$APH4/receipts.jsonl" 2>/dev/null \
+   && ! grep -qF "$ABSENT_FILE" "$APH4/receipts.jsonl" 2>/dev/null \
+   && [ "$PH4_LINES" = "1" ]; then
+  ok "PH-4 butin-receipt.sh: existing-transcript worker receipt minted, absent-transcript worker receipt skipped (source fix)"
+else
+  ko "PH-4 receipts=[$(cat "$APH4/receipts.jsonl" 2>/dev/null)]"
+fi
+# PH-4b (v0.16.0): the ONE line that was minted (the existing-transcript
+# case; the absent case never got a line to check) must carry
+# "observed":true — the plain branch only reaches the printf when the file
+# exists.
+if grep -qF "$EXIST_FILE" "$APH4/receipts.jsonl" 2>/dev/null && grep -q '"observed":true' "$APH4/receipts.jsonl" 2>/dev/null; then
+  ok "PH-4b plain-branch mint for an existing transcript carries \"observed\":true"
+else
+  ko "PH-4b receipts=[$(cat "$APH4/receipts.jsonl" 2>/dev/null)]"
+fi
+
 # manifest == agents/ (mirrors the CI guard; catches drift locally too)
 MANIFEST_DIFF=$(diff <(sort "$HERE/lib/butin/amiral-agents.txt") <(ls "$HERE"/agents/*.md | xargs -n1 basename | sed 's/\.md$//' | sort))
 [ -z "$MANIFEST_DIFF" ] && ok "V15 lib/butin/amiral-agents.txt matches agents/*.md exactly" || ko "V15 manifest drift: $MANIFEST_DIFF"
+
+# ─── v0.16.0 (audit M7): core.awk must be correct-by-construction under any
+# locale, not merely by the LC_ALL=C caller convention — that convention
+# already failed on this repo's own doc author, and ports/BUTIN.md invites
+# third parties to invoke core.awk directly. LC_ALL=C is exported at the top
+# of THIS test file (line 5) for every other test's sake, so this one block
+# runs in a subshell with its own LC_ALL to actually exercise the guard. ───
+AM7="$(mktemp -d)"
+printf '{"v":1,"id":"m7","agent":"grunt","real_cost_usd":1.5,"counterfactual_cost_usd":2.75,"outcome":"ok"}\n' > "$AM7/m7.jsonl"
+# NOT `grep -q`: under `set -o pipefail`, grep -q's early exit on first match
+# SIGPIPEs the still-writing `locale -a` (288 lines), and pipefail then
+# reports the PIPELINE as failed (rightmost non-zero exit, which is locale
+# -a's 141 from the SIGPIPE) even though grep DID find the match. Let grep
+# run to completion (output binned to /dev/null) instead.
+if locale -a 2>/dev/null | grep -i '^fr_FR' >/dev/null; then
+  M7LOC=fr_FR.UTF-8
+elif locale -a 2>/dev/null | grep -i '^de_DE' >/dev/null; then
+  M7LOC=de_DE.UTF-8
+else
+  M7LOC=""
+fi
+if [ -n "$M7LOC" ]; then
+  M7OUT=$(LC_ALL="$M7LOC" awk -f "$HERE/lib/butin/core.awk" "$AM7/m7.jsonl")
+  M7NET=$(echo "$M7OUT" | awk -F'\t' '/^NET/{print $2}')
+  if echo "$M7NET" | grep -q '\.' && ! echo "$M7NET" | grep -q ','; then
+    ok "M7 comma-locale regression ($M7LOC): NET=$M7NET uses a period, never a comma"
+  else
+    ko "M7 comma-locale regression: NET=[$M7NET] under $M7LOC (want period, no comma)"
+  fi
+else
+  # No comma-decimal locale installed on this machine (some CI images) —
+  # never silently pass on nothing: fall back to a structural check that the
+  # locale guard is actually present in the source, and say so explicitly.
+  echo "  (M7: no fr_FR/de_DE locale available — falling back to a structural source check)"
+  if grep -q 'gsub(/,/' "$HERE/lib/butin/core.awk"; then
+    ok "M7 structural fallback: core.awk contains the comma->period locale guard (gsub(/,/...)"
+  else
+    ko "M7 structural fallback: locale guard (gsub(/,/...) not found in core.awk"
+  fi
+fi
 
 
 echo ""; echo "  $PASS passed, $FAIL failed"

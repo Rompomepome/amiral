@@ -27,10 +27,17 @@ measured events. Correct by construction:
     flush race a transcript can legitimately be mid-write for is minutes,
     not hours. A receipt whose transcript is absent past
     BUTIN_RECEIPT_TTL_HOURS (default 6h — far above any real flush delay,
-    far below the old 48h's pending inflation) becomes unmeasurable
-    ("transcript absent (never written or removed)") instead of being
-    silently forgotten or advertised as pending forever. Coverage tells the
-    truth: measured / pending / unmeasurable. Likewise,
+    far below the old 48h's pending inflation) becomes unmeasurable instead
+    of being silently forgotten or advertised as pending forever. v0.16.0
+    PHANTOM/LOSS SPLIT: the receipt's own "observed" field (set at mint time
+    by butin-receipt.sh — true iff the transcript was seen on disk then)
+    decides which of two reasons is emitted: observed=true means the
+    transcript existed and is now gone ("transcript removed after it was
+    recorded (existed at mint, measurement lost)" — a real LOSS, stays in
+    the coverage denominator); observed=false/missing means it was never
+    written at all ("transcript never written (phantom — SubagentStop path,
+    v0.14)" — noise, excluded). Coverage tells the truth: measured / pending
+    / unmeasurable. Likewise,
     if any model group in a receipt has no pricing_id (or the baseline
     itself is unpriced), the WHOLE receipt becomes ONE unmeasurable event —
     pricing only the known slice would undercount the transcript, an
@@ -325,9 +332,21 @@ def _measure():
                     receipt_age_h = None   # unparseable ts: never guess an age, keep pending
             if receipt_age_h is not None and receipt_age_h > TTL_HOURS:
                 ag = agent_name(transcript, r.get("agent_hint"), r.get("role"))
+                # v0.16.0 PHANTOM/LOSS SPLIT: "observed" (set at mint time by
+                # butin-receipt.sh) is the signal — both mint sites only fire
+                # when the file exists on disk THEN, so observed=true means a
+                # real transcript existed and was later removed (a genuine
+                # loss, must stay in the coverage denominator); observed
+                # false/missing (includes every pre-v0.16 receipt, minted
+                # before this field existed) means it was never written at
+                # all (SubagentStop's own noise, excluded from coverage).
+                if r.get("observed") is True:
+                    reason = "transcript removed after it was recorded (existed at mint, measurement lost)"
+                else:
+                    reason = "transcript never written (phantom — SubagentStop path, v0.14)"
                 new_events.append({"v": 2, "receipt": r["id"], "ts": r["ts"], "agent": ag,
                       "transcript": transcript, "unmeasurable": True,
-                      "reason": "transcript absent (never written or removed)"})
+                      "reason": reason})
                 unmeasurable += 1; continue
             kept.append(line); pending += 1; continue
         # BRAIN dedup: the Stop hook fires once per turn, each receipt points at

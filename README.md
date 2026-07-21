@@ -58,6 +58,28 @@ planning brain? `AMIRAL_BRAIN=fable amiral` (metered via credits since July 12).
 
 (Power users: optional variants and env overrides exist, but you never need them to start.)
 
+### One real task, start to finish
+
+Not a hypothetical — a task from this repo's own build, measured in
+`~/.amiral/butin.jsonl` (baseline Opus, tokens priced from the real
+transcript):
+
+```
+request   "Implement the butin statusline (producer/cache/renderer)."
+route     real feature → implementer agent, model: sonnet
+          (the admiral planned + verified; it did not write the bulk)
+receipt   real $28.70  ·  same tokens at the Opus baseline $143.49
+          → saved $114.79 on one task
+```
+
+The worker did the token-heavy execution at ~1/5 the frontier rate; the
+brain paid only for planning and review. Four more traces — including one
+where the admiral **refused to delegate** because the hand-off would cost
+more than the edit — are in [`examples/`](examples/). This is
+*observational* (what was actually spent vs the same tokens at baseline),
+not an A/B trial; reproduce your own with `amiral-butin backfill --all &&
+amiral-butin`.
+
 ## 🧠 The problem
 
 Frontier models in Claude Code are the fastest way to burn a usage window:

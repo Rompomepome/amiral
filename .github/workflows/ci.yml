@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Shell syntax
-        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh bin/amiral-doctor bin/amiral-trust bin/amiral-setup bin/amiral-savings bin/amiral-report bin/amiral-butin bin/amiral-journal bin/amiral-statusline lib/butin/cache.sh lib/butin/agents.sh adapters/claude-code/butin-collect.sh adapters/claude-code/butin-receipt.sh hooks/subagent-verify.sh
+        run: bash -n install.sh uninstall.sh templates/verify-nextjs.sh shell/amiral-profiles.sh bin/amiral-doctor bin/amiral-trust bin/amiral-setup bin/amiral-savings bin/amiral-report bin/amiral-butin bin/amiral-journal bin/amiral-statusline lib/butin/cache.sh lib/butin/agents.sh adapters/claude-code/butin-collect.sh adapters/claude-code/butin-receipt.sh hooks/subagent-verify.sh tests/test-uninstall.sh tests/test-fresh-install.sh
 
       - name: Plugin manifests are valid JSON
         run: |
@@ -130,6 +130,12 @@ jobs:
       - name: Trust gate battery
         run: bash tests/test-trust.sh
 
+      - name: Uninstall completeness battery
+        run: bash tests/test-uninstall.sh
+
+      - name: Fresh-install battery (new-user path)
+        run: bash tests/test-fresh-install.sh
+
       - name: No dangerous flags shipped
         run: |
           ! grep -R -- "--dangerously-skip-permissions" shell/ install.sh agents/ skills/
@@ -179,3 +185,7 @@ jobs:
         run: bash tests/test-journal.sh
       - name: Trust gate battery (BSD userland)
         run: bash tests/test-trust.sh
+      - name: Uninstall completeness battery (BSD userland)
+        run: bash tests/test-uninstall.sh
+      - name: Fresh-install battery (BSD userland)
+        run: bash tests/test-fresh-install.sh

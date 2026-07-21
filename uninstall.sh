@@ -12,9 +12,12 @@ echo "-> Removing amiral from: $CLAUDE_DIR"
 if [ -f "$CLAUDE_DIR/amiral-butin" ]; then
   bash "$CLAUDE_DIR/amiral-butin" statusline uninstall >/dev/null 2>&1 || true
 fi
-rm -f "$CLAUDE_DIR/butin/amiral-statusline.sh" \
-      "$CLAUDE_DIR/butin/amiral-statusline.ps1" \
-      "$CLAUDE_DIR/butin/cache.sh"
+# The installer copies the ENTIRE butin layer (core.awk, measure.py,
+# backfill.py, agents.sh, amiral-agents.txt, butin-receipt.sh, pricing.tsv,
+# butin-collect.sh, adapter.sh, the statusline renderer + cache, ...) into
+# this one directory and nowhere else (install.sh step 5) — remove it whole
+# so uninstall doesn't orphan files the three-name rm used to miss.
+rm -rf "$CLAUDE_DIR/butin"
 
 rm -f "$CLAUDE_DIR/amiral-policy.md" \
       "$CLAUDE_DIR/agents/implementer.md" \

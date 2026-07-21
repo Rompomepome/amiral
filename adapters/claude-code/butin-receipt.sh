@@ -84,13 +84,37 @@ if [ -n "${TRANSCRIPT:-}" ] && _hostile_path "$TRANSCRIPT"; then
 elif [ "$ROLE" = "worker" ] && [ -n "${TRANSCRIPT:-}" ] \
      && { grep -qF -- "$TRANSCRIPT" "$RECEIPTS" 2>/dev/null || grep -qF -- "$TRANSCRIPT" "$EVENTS" 2>/dev/null; }; then
   SKIP=1
+elif [ "$ROLE" = "worker" ] && [ -n "${TRANSCRIPT:-}" ] && [ ! -f "$TRANSCRIPT" ]; then
+  # v0.16 PHANTOM FIX: per the header's v0.14 discovery, SubagentStop on this
+  # build fires ONLY for internal/ephemeral agents whose named transcript is
+  # minted but NEVER written to disk — every REAL worker transcript is
+  # already covered by the discovery scan a few lines down (the brain
+  # branch), which only mints a receipt once the file exists. Minting here
+  # for a named-but-absent transcript therefore loses nothing: it can only
+  # ever resolve to measure.py's "transcript absent" unmeasurable event,
+  # noise the tool would generate about itself. If a future build revives
+  # SubagentStop and the file is merely still-streaming (not phantom), the
+  # transcript will exist by the next brain turn and discovery mints it
+  # then. Does NOT touch the brain branch, the discovery scan, or the
+  # empty-transcript case (nothing to check existence of).
+  SKIP=1
 fi
 
 # One atomic line. No file reads, no arithmetic — nothing that can race
 # (bar the dedup/hostile checks just above, needed to kill the double-bill).
+# v0.16.0 PHANTOM/LOSS SPLIT: "observed" records whether the transcript was
+# seen on disk AT MINT TIME — the signal measure.py later uses to tell a
+# never-written phantom (SubagentStop noise, excluded from coverage) apart
+# from a transcript that DID exist and was later removed (a real loss, must
+# stay in the coverage denominator). The worker branch above only reaches
+# here when the file exists (the SKIP guard just above catches the absent
+# case), and the brain branch's main transcript always exists by the time
+# the Stop hook fires — so this is normally true; the one lingering false
+# case is an empty $TRANSCRIPT (nothing to observe).
+OBSERVED=false; [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ] && OBSERVED=true
 if [ "$SKIP" = "0" ]; then
-  printf '{"v":2,"id":"%s","ts":"%s","role":"%s","session":"%s","agent_hint":"%s","transcript":"%s","cwd":"%s","measured":false}\n' \
-    "$ID" "$TS" "$ROLE" "$SESSION" "${AGENT:-}" "${TRANSCRIPT:-}" "${CWD:-}" >> "$RECEIPTS"
+  printf '{"v":2,"id":"%s","ts":"%s","role":"%s","session":"%s","agent_hint":"%s","transcript":"%s","cwd":"%s","measured":false,"observed":%s}\n' \
+    "$ID" "$TS" "$ROLE" "$SESSION" "${AGENT:-}" "${TRANSCRIPT:-}" "${CWD:-}" "$OBSERVED" >> "$RECEIPTS"
 fi
 
 # v0.14 DISCOVERY SCAN (brain branch only — see header for the why). The
@@ -154,7 +178,9 @@ if [ "$ROLE" = "brain" ] && [ -n "${TRANSCRIPT:-}" ]; then
       WID="$(printf '%s' "$SESSION-$(basename "$AT" .jsonl)-$WTS-$$-${RANDOM:-0}" | shasum 2>/dev/null | awk '{print substr($1,1,12)}')"
       # agent_hint is deliberately EMPTY: identity comes from the .meta.json
       # sidecar at measure time (agent_name() in measure.py), never a hint.
-      printf '{"v":2,"id":"%s","ts":"%s","role":"worker","session":"%s","agent_hint":"","transcript":"%s","cwd":"%s","measured":false}\n' \
+      # observed:true literally — the `[ -f "$AT" ]` loop guard just above
+      # already confirmed the file is present on disk.
+      printf '{"v":2,"id":"%s","ts":"%s","role":"worker","session":"%s","agent_hint":"","transcript":"%s","cwd":"%s","measured":false,"observed":true}\n' \
         "$WID" "$WTS" "$SESSION" "$AT" "${CWD:-}" >> "$RECEIPTS"
     done
     rm -f "$KNOWN"

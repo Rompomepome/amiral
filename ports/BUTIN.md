@@ -126,6 +126,18 @@ Load-bearing quirks observed on real usage, not in any published spec:
   the old 48h default caused from phantom receipts). Once a receipt's
   transcript is absent (not merely unparseable — that case still stays
   pending, it may just be mid-flush) and its age exceeds the TTL, it
-  becomes `unmeasurable` with `"reason": "transcript absent (never written
-  or removed)"` and is drained from `receipts.jsonl`. Pending must never
-  be forever.
+  becomes `unmeasurable` and is drained from `receipts.jsonl`. Pending must
+  never be forever. The reason is **split by whether the transcript was
+  ever observed on disk** (recorded at mint time as the receipt's
+  `"observed"` boolean — discovery, and the guarded plain branch, only
+  mint when the file exists): if it was observed and is now gone, the
+  event reads `"transcript removed after it was recorded …"` — a real
+  **LOSS**, which STAYS in the coverage denominator (genuine data loss
+  must stay visible); if it was never observed, it reads `"transcript
+  never written (phantom …)"` — noise the harness generated about itself,
+  excluded from coverage but still counted on its own line. (Events minted
+  before this split carry the legacy combined reason `"transcript absent
+  (never written or removed)"` and cannot be re-split retroactively — the
+  originating receipt is already drained; they are presumed phantom on the
+  v0.14 evidence that SubagentStop fired only for never-written
+  transcripts on that build.)

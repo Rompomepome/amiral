@@ -1,5 +1,86 @@
 # Changelog
 
+## v0.16.0 - 2026-07-21
+**Phantom receipts stop depressing coverage — WITHOUT hiding real data
+loss; the front door leads with measured numbers instead of borrowed
+ones; and the uninstall/new-user paths finally get tested.**
+- **Phantom (noise) split from LOSS (real gap), and only the noise leaves
+  the coverage denominator.** A large share of the log was unmeasurable
+  events reading `transcript absent…`. v0.14.0 established why: on this
+  build SubagentStop fires only for internal/ephemeral agents whose
+  `agent_transcript_path` is minted but NEVER written — pure phantoms.
+  But "never written" and "removed" are opposite cases: a transcript that
+  DID exist (discovery only mints for files on disk) and was later
+  garbage-collected is a REAL task whose measurement was lost, and
+  excluding *that* would make genuine data loss invisible. So the fix is a
+  split, not a blanket exclusion:
+  - **source** — the receipt hook records `"observed"` on each receipt
+    (both mint sites only fire when the transcript exists on disk), and
+    the plain worker branch no longer mints for an absent transcript at
+    all (discovery covers every real one, so nothing is lost);
+  - **measure** — at TTL expiry, `observed:true` → reason `transcript
+    removed…` (a **LOSS**, which STAYS in the coverage denominator,
+    surfaced not hidden); otherwise → `transcript never written
+    (phantom…)`;
+  - **display** — `core.awk` counts phantoms in a separate `PHANTOM`
+    bucket (out of the denominator) but keeps `removed`/LOSS and every
+    other reason (e.g. `unknown pricing_id`) IN it. Phantoms are still
+    shown on their own labelled line and in `--detail`; nothing is hidden.
+    Events minted before the split carry the old combined reason and
+    can't be re-split (their receipt is already drained) — presumed
+    phantom on the v0.14 evidence, and `--detail` says so.
+  Net effect on the author's real log: coverage stopped counting the
+  self-generated phantom noise as missed work, printed in the tool's own
+  shape (`measured/total · pending · unmeasurable`, phantoms excluded) —
+  see BENCHMARKS.md for a dated figure. Statusline inherits it (one
+  calculator).
+- **`core.awk` is locale-safe by construction (audit M7).** It has no
+  locale guard of its own and printed comma-decimals (`848,00`) under a
+  non-C `LC_NUMERIC` — safe only by the convention that callers export
+  `LC_ALL=C`, a convention that had already failed on the doc author and
+  on third parties `ports/BUTIN.md` invites to call it directly. Every
+  `%.4f` field now routes through a helper that forces a `.`, so the
+  output is correct regardless of the caller's locale; a regression test
+  runs it under `fr_FR.UTF-8`.
+- **`examples/` — five real routed tasks, end to end.** Each is an actual
+  task from this repo's own build, with the verbatim request, the triage,
+  the agent+model, and the measured cost vs the Opus baseline (every
+  dollar a real `butin.jsonl` event; usernames/paths stripped). Includes
+  the one where the admiral **refused to delegate** — trivial tier, the
+  hand-off costs more than the edit, no worker spawned, no receipt
+  written. Linked from the README with a before/after trace at the top.
+- **BENCHMARKS.md leads with a measured row, not a borrowed one.** A
+  **dated, explicitly still-growing** observational row from the author's
+  multi-week backfill (baseline Opus, ~70 amiral-routed tasks and
+  climbing, other-subagent activity excluded, decomposition-bias caveat),
+  stated plainly as OBSERVATIONAL — what was actually spent vs the same
+  tokens at baseline — NOT the A/B protocol below it, and never "amiral
+  saves you". Two rules keep it honest against a reader who runs the
+  command: coverage is quoted in the tool's OWN shape (`measured/total`,
+  pending included — no invented prettier ratio), and the aggregate is
+  marked a point-in-time snapshot of an append-only log (a re-run reads
+  higher — that's the ledger growing; the stable, checkable data is the
+  per-task events in `examples/`). Reproduce your own in two commands
+  (`amiral-butin backfill --all`, then `amiral-butin`). The pavillon badge
+  (≥20 tasks) is **generated on demand** via `amiral-journal flag` — NOT a
+  hardcoded shields.io image, which would drift out of date permanently
+  and no CI could catch it.
+- **Uninstall completeness (AUDIT-FABLE M10, closed).** `uninstall.sh`
+  removed three files from `~/.claude/butin/` and orphaned the rest
+  (measure.py, backfill.py, agents.sh, core.awk, pricing.tsv, …); it now
+  `rm -rf`s the whole `butin/` dir (after the statusline restore, which
+  still runs first). A new battery fails if any file survives.
+- **The new-user path is finally tested.** Everything had only ever been
+  validated on a machine with six weeks of state; a new battery walks a
+  clean install end to end against a temp HOME (install → wire → `init`
+  → one measured task → first report) and fails if any step needs
+  undocumented manual intervention. It found none — `init` on a clean
+  HOME falls back to the conservative Sonnet baseline without prompting.
+- Fix: `amiral-journal flag` now resolves `core.awk` installed-first then
+  repo-checkout (the fallback `amiral-butin`/`cache.sh` already had), so
+  the badge works from a fresh clone and never pins to a stale installed
+  calculator.
+
 ## v0.15.2 - 2026-07-20
 **Front-door truth pass — the README sold guarantees the code no longer
 backs, the same class of defect as a false provenance trailer.**
@@ -151,6 +232,34 @@ performed, the single most attackable claim in the tool.**
   count next to an amiral-only net was the same over-claim one column
   over). Documented in DESIGN-NOTES.md and docs/butin-spec-v2.md;
   +9 butin / +2 statusline / +2 journal battery tests.
+
+## v0.14.1 - 2026-07-19
+**Backfill — past sessions were invisible; plus dated model-id
+normalization (strip the date once, never guess).**
+- **`amiral-butin backfill` mints receipts for PAST sessions' real
+  subagent transcripts.** Live discovery (v0.14.0) only ever scans the
+  CURRENT session's `subagents/` dir each turn, so every worker
+  transcript from a session you've since closed sat on disk invisible to
+  the butin forever. Backfill walks the project transcript dirs, finds
+  the `agent-*.jsonl` files with no receipt, and mints one each under the
+  SAME rules as live discovery (hostile-path guard, stable-gate, dedup
+  against both `receipts.jsonl` and `butin.jsonl`) — it MINTS only, never
+  measures, so a `--dry-run` writes nothing at all. Scope defaults to the
+  current directory's project; `--all` covers every project. The author's
+  own first run recovered **87 receipts across 18 sessions, six weeks of
+  history** that had been uncounted.
+- **Dated model-id normalization** (`measure.py`): a pricing-table miss
+  on the platform's own reported id (e.g. `claude-haiku-4-5-20251001`)
+  now retries ONCE after stripping a trailing `-YYYYMMDD`, then prices at
+  the dated id if that hits — it never guesses a base model from a
+  partial match. A model that is genuinely unpriced stays one honest
+  `unknown pricing_id` unmeasurable event, not a fabricated rate.
+- **Review fixes (fresh context):** the receipts file gained a lock so a
+  concurrent backfill and a live receipt append can't interleave a line;
+  the stable-gate honors `BUTIN_STABLE_SECS` on the backfill path too
+  (a transcript touched in the last 60s stays pending, same 6.7x lesson);
+  and an empty-after-strip model id can no longer produce an empty-string
+  receipt field. `+269` lines of battery coverage.
 
 ## v0.14.0 - 2026-07-18
 **Receipt-by-discovery (the butin was blind to workers), mixed-model

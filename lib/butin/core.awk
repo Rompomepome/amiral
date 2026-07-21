@@ -15,6 +15,26 @@
 # every existing caller that doesn't pass it), EVERY worker is amiral: the
 # split is a no-op and NET/GROSS/ESC/AGENTS_START..END are computed exactly
 # as before v0.15 (legacy path, byte-identical values).
+# v0.16 adds: PHANTOM. Events unmeasurable with reason "transcript absent
+# (never written or removed)" are the tool's own noise (v0.14 finding, see
+# butin-receipt.sh header) — counted separately, excluded from UNMEASURED
+# and therefore from the coverage denominator (MEASURED+UNMEASURED+PENDING).
+# Every other unmeasurable reason (e.g. "unknown pricing_id") is untouched.
+# v0.16.0 PHANTOM/LOSS SPLIT: measure.py now emits two DIFFERENT reasons for
+# an absent transcript, keyed off the receipt's "observed" field (see its
+# docstring) — a "phantom" reason (never written, noise, excluded) and a
+# "removed" reason (existed at mint and is now gone, a REAL loss, stays in
+# the coverage denominator). See the three-way classification below.
+# v0.16.0 (audit M7): correct by construction under any locale, not by the
+# LC_ALL=C caller convention — that convention already failed on this repo's
+# own doc author, and ports/BUTIN.md invites third parties to invoke this
+# file directly. awk has no in-script setlocale, so every %.4f output field
+# is routed through d4() below, which forces a period regardless of libc's
+# LC_NUMERIC (verified live: LC_ALL=fr_FR.UTF-8 awk prints "1,5000" for
+# "%.4f" on 1.5). Integer %d fields are locale-safe and untouched. (Named
+# d4, not d — `d` is already a global used by the merged-line detector
+# below; awk has one flat namespace and would reject a function named d.)
+function d4(x,   s) { s = sprintf("%.4f", x); gsub(/,/, ".", s); return s }
 function j(field,   v) {
   if (match($0, "\"" field "\"[ ]*:[ ]*\"[^\"]*\"")) {
     v = substr($0, RSTART, RLENGTH); sub(/^.*:[ ]*"/, "", v); sub(/"$/, "", v); return v }
@@ -52,8 +72,32 @@ BEGIN {
   sv = j("v"); if (sv != "" && sv+0 > 2) { skipped_v++; next }
   ver = j("v"); if (ver != "" && ver != "1" && ver != "2") { skipv++; next }
   id = j("id"); if (id != "" && (id in seen)) { dup++; next } ; if (id != "") seen[id]=1
-  if (j("unmeasured") == "true" || j("unmeasurable") == "true") { unmeasured++
-    um = j("model"); if (um != "" && um != "unknown") umm[um]++
+  if (j("unmeasured") == "true" || j("unmeasurable") == "true") {
+    # v0.16: "transcript absent" is NOT a genuine coverage gap — it is v0.14's
+    # own documented finding (see butin-receipt.sh header): SubagentStop fires
+    # ONLY for phantom agents whose named transcript is never written; every
+    # REAL worker transcript is already covered by the discovery scan (the
+    # brain branch), so a receipt that later resolves to "transcript absent"
+    # is noise the tool generated about itself, never lost real work. Counted
+    # separately (phantom) and dropped from the coverage denominator below.
+    # Every OTHER unmeasurable reason (e.g. "unknown pricing_id" — a genuine
+    # pricing gap on real work) still counts as unmeasured, unchanged.
+    reason = j("reason")
+    # LEGACY (pre-v0.16.0): the ~48 already-emitted events carry this exact
+    # combined reason and their originating receipts were already drained
+    # from receipts.jsonl — they CANNOT be split retroactively (the
+    # "observed" signal that would tell them apart never existed for these).
+    # The v0.14 investigation established SubagentStop fired ONLY for
+    # never-written transcripts on this build (20/20 historical), so these
+    # are presumed phantom. Must be checked FIRST: the legacy string
+    # contains BOTH "phantom"-adjacent wording and "removed", so either
+    # substring rule below would misfire on it if checked first.
+    if (reason == "transcript absent (never written or removed)") { phantom++ }
+    else if (index(reason, "phantom") > 0) { phantom++ }               # new phantom -> excluded
+    else if (index(reason, "removed") > 0) { unmeasured++              # new LOSS -> stays in denominator
+      um = j("model"); if (um != "" && um != "unknown") umm[um]++ }
+    else { unmeasured++                                                 # unknown pricing_id, anything else
+      um = j("model"); if (um != "" && um != "unknown") umm[um]++ }
     next }
   agent = j("agent"); real = j("real_cost_usd"); cf = j("counterfactual_cost_usd")
   if (agent == "" || real == "") { bad++; next }
@@ -98,21 +142,22 @@ END {
   net = gross - esc_cost - brain_prem
   o_net = (o_cf - o_real) - o_esc_cost
   printf "AGENTS_START\n"
-  for (a in n) if (is_amiral(a)) printf "%s\t%d\t%.4f\t%.4f\t%.4f\n", a, n[a], R[a], C[a], (C[a]-R[a])
+  for (a in n) if (is_amiral(a)) printf "%s\t%d\t%s\t%s\t%s\n", a, n[a], d4(R[a]), d4(C[a]), d4(C[a]-R[a])
   printf "AGENTS_END\n"
   printf "OTHER_START\n"
-  for (a in n) if (!is_amiral(a)) printf "%s\t%d\t%.4f\t%.4f\t%.4f\n", a, n[a], R[a], C[a], (C[a]-R[a])
+  for (a in n) if (!is_amiral(a)) printf "%s\t%d\t%s\t%s\t%s\n", a, n[a], d4(R[a]), d4(C[a]), d4(C[a]-R[a])
   printf "OTHER_END\n"
-  printf "ESC\t%d\t%.4f\n", esc_n+0, esc_cost+0
-  printf "BRAIN\t%d\t%.4f\n", brain_n+0, brain_prem+0
-  printf "NET\t%.4f\nGROSS\t%.4f\n", net, gross
-  printf "OTHER_NET\t%.4f\n", o_net
+  printf "ESC\t%d\t%s\n", esc_n+0, d4(esc_cost+0)
+  printf "BRAIN\t%d\t%s\n", brain_n+0, d4(brain_prem+0)
+  printf "NET\t%s\nGROSS\t%s\n", d4(net), d4(gross)
+  printf "OTHER_NET\t%s\n", d4(o_net)
   printf "OTHER_TASKS\t%d\n", o_tasks+0
-  printf "OTHER_REAL\t%.4f\n", o_real+0
-  printf "OTHER_CF\t%.4f\n", o_cf+0
-  printf "OTHER_ESC\t%d\t%.4f\n", o_esc_n+0, o_esc_cost+0
+  printf "OTHER_REAL\t%s\n", d4(o_real+0)
+  printf "OTHER_CF\t%s\n", d4(o_cf+0)
+  printf "OTHER_ESC\t%d\t%s\n", o_esc_n+0, d4(o_esc_cost+0)
   if (amir_count == 0) printf "ATTRIB_OFF\t1\n"
   printf "MEASURED\t%d\nUNMEASURED\t%d\nDUP\t%d\n", measured+0, unmeasured+0, dup+0
+  printf "PHANTOM\t%d\n", phantom+0
   printf "PREM_AVOIDED\t%d\n", prem_avoided+0
   printf "VERIFIED\t%d\t%d\n", ver_ok+0, ver_ko+0
   if (grunt_total > 0) printf "CHEAP_RATE\t%d\t%d\n", grunt_ok, grunt_total

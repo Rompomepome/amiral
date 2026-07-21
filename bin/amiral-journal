@@ -290,7 +290,13 @@ Amiral-Noted: $(date -u +%FT%TZ)"
     AMIRAL_AGENTS=""
     [ -f "$AGENTS_SH" ] && . "$AGENTS_SH"
     command -v amiral_agents_csv >/dev/null 2>&1 && AMIRAL_AGENTS="$(amiral_agents_csv "$HERE/lib/butin/amiral-agents.txt")"
-    REPORT=$(awk -v AMIRAL_AGENTS="$AMIRAL_AGENTS" -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk" "$LOG" 2>/dev/null)
+    # installed core.awk first, then the repo checkout — same fallback idiom as
+    # bin/amiral-butin and lib/butin/cache.sh. Without it, running `flag` from a
+    # fresh clone (before install.sh) read no calculator and misreported 0 tasks;
+    # and it kept the badge pinned to a stale installed core.awk. One calculator.
+    CORE_J="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/butin/core.awk"
+    [ -f "$CORE_J" ] || CORE_J="$HERE/lib/butin/core.awk"
+    REPORT=$(awk -v AMIRAL_AGENTS="$AMIRAL_AGENTS" -f "$CORE_J" "$LOG" 2>/dev/null)
     NET=$(echo "$REPORT" | awk -F'\t' '/^NET/{print $2}')
     # AMIR_TASKS = amiral-routed measured tasks (sum of the AGENTS_START block's
     # Tasks column — brain and other-bucket agents never appear there).
