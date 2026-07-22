@@ -13,7 +13,20 @@ if ! command -v claude >/dev/null 2>&1; then
   echo "    Continuing anyway — the config will be picked up once installed."
 fi
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Symlink-safe resolution: when installed via `npm i -g @rompomepome/amiral`,
+# npm invokes this script through a symlink in npm's global bin dir — a naive
+# dirname/pwd on BASH_SOURCE would resolve to npm's bin dir, not this package,
+# and every `cp "$REPO_DIR/..."` below would fail. Walk the symlink chain by
+# hand (POSIX `readlink`, NOT GNU `readlink -f`, which BSD/macOS lacks) so
+# this also keeps working for the plain `git clone && ./install.sh` path (a
+# non-symlink SOURCE just skips the while loop).
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  _dir="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  case "$SOURCE" in /*) ;; *) SOURCE="$_dir/$SOURCE" ;; esac
+done
+REPO_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 CLAUDE_MD="$CLAUDE_DIR/CLAUDE.md"
 POLICY_FILE="$CLAUDE_DIR/amiral-policy.md"

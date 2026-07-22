@@ -245,6 +245,27 @@ claude update   # Sonnet 5 needs v2.1.197+
 > [!NOTE]
 > Profiles ship with Claude Code's **default permission prompts** — safe by default. Want fewer prompts? Read [docs/permissions.md](docs/permissions.md) for the full speed/safety spectrum (allowlists, `acceptEdits`, and why we don't ship YOLO mode).
 
+### Option C — npm
+
+```bash
+npm i -g @rompomepome/amiral
+```
+
+Note the scoped name — `@rompomepome/amiral`, **not** `amiral` (that's a different, unrelated package on npm).
+
+What this gives you: the `amiral-install` and `amiral-uninstall` commands on your PATH. What it does **not** do: it does **not** touch `~/.claude`, your shell rc, or `settings.json` on install — there is no `postinstall` script, by design (same honest accounting as the Plugin-manifests row above: this states plainly what it does and does not give you).
+
+Then run the installer explicitly (same effect as `./install.sh`):
+
+```bash
+amiral-install
+echo 'source ~/.claude/amiral-profiles.sh' >> ~/.zshrc && source ~/.zshrc
+```
+
+Why the two-step instead of one: a package that rewrites your agent config the moment you run `npm i` is exactly what security teams block, and it contradicts "nothing surprising, nothing hosted." Config changes to your agent setup stay an explicit action you take, never a silent side effect of a package manager.
+
+**Windows:** `npm i -g` works, but `amiral-install` is a bash script — run it from **Git Bash or WSL** (native PowerShell has no `bash`), then add `. "$HOME\.claude\amiral-profiles.ps1"` to your `$PROFILE`. Same requirement as Option B.
+
 ### The fleet
 
 | Command | Brain | Workers | When |

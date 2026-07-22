@@ -1,0 +1,52 @@
+# npm publish for @rompomepome/amiral — tag-gated, provenance-signed.
+#
+# WHY tag-gated: this workflow triggers ONLY on `v*` tag pushes, never on
+# every commit/PR (unlike ci.yml). npm's version counter (an honest
+# adoption signal per IDEAS.md) must only move on real releases, not on
+# every merge to main.
+#
+# WHY provenance is free here: `permissions: id-token: write` on a PUBLIC
+# GitHub repo lets `npm publish --provenance` attach a signed attestation
+# (built from this exact commit, by this exact workflow) at no extra cost
+# or infra — no signing keys to manage, nothing hardcoded. `contents: read`
+# is the minimum needed to check out the repo.
+#
+# WHY the tag/version guard: a mistagged release (e.g. tag v0.17.0 pushed
+# while package.json still says 0.16.9) must not silently publish the
+# wrong version to npm — versions there are permanent, unlike a git tag.
+#
+# The publish token (NPM_TOKEN) is a repo secret; nothing is hardcoded here.
+name: Publish to npm
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Tag matches package.json version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          [ "$TAG" = "v$PKG_VERSION" ] || { echo "tag/version mismatch: tag=$TAG package.json=v$PKG_VERSION"; exit 1; }
+
+      - name: npm-pack security battery (pre-publish gate)
+        run: bash tests/test-npm-pack.sh
+
+      - name: Publish
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

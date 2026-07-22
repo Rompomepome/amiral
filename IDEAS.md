@@ -80,6 +80,15 @@ markdown, nothing hosted, nothing that phones home.
      the honest proxy already available: `gh api repos/.../traffic/clones`.
 - **The line:** counting must come from platforms that count natively,
   never from amiral calling home.
+- **Update (v0.17.0, npm distribution shipped):** the npm half of item 1
+  is now real (`@rompomepome/amiral`, tag-gated `publish.yml`) — so the
+  honest adoption signals going forward are: **npm download counts**
+  (npmjs.com + `npm view @rompomepome/amiral` download stats), **Claude
+  Code plugin-marketplace installs** (the marketplace's own count), and
+  `gh api repos/Rompomepome/amiral/traffic/clones` (people copy a repo
+  URL to their agent; they don't star — stars undercount). A home-grown
+  telemetry ping stays **permanently off the table**: nothing phones
+  home, ever — the registry and the marketplace count for us, natively.
 
 ## Community benchmark data — opt-in, WITHOUT a server (validated 2026-07-10)
 - **Want:** enrich the public benchmark with real community numbers, with

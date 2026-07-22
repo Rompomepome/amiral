@@ -1,5 +1,76 @@
 # Changelog
 
+## v0.17.0 - 2026-07-21
+**npm distribution — `npm i -g @rompomepome/amiral` puts two commands on
+PATH and does NOTHING else; config still only lands in `~/.claude` when
+you knowingly run `amiral-install`.**
+- **The name is `@rompomepome/amiral`, not `amiral`.** Bare `amiral` is
+  already taken on npm (v0.3.2, an unrelated author's package); the
+  scoped name was free. First publish of a scoped package defaults to
+  **restricted** (a paid-plan requirement that would silently fail), so
+  both `package.json`'s `publishConfig.access: "public"` AND an explicit
+  `--access public` on `npm publish` are required — either alone is not
+  enough.
+- **No `postinstall`, ever — this is the whole point, not an oversight.**
+  `npm i -g @rompomepome/amiral` installs the package and exposes
+  `amiral-install`/`amiral-uninstall` on PATH. That's it. It does not
+  touch `~/.claude`, your shell rc, or `settings.json`. A package that
+  rewrites agent config the moment `npm i` runs is exactly what security
+  teams block and contradicts "nothing surprising, nothing hosted" — so
+  installing into `~/.claude` stays a second, explicit, knowing command
+  (`amiral-install`), same effect as the git-clone `./install.sh` route.
+  A new battery (`tests/test-npm-pack.sh`) makes this a regression test,
+  not a promise: it packs the real tarball, `npm i -g`s it into a
+  hermetic temp prefix + temp HOME, and asserts `~/.claude` stays empty
+  until `amiral-install` is actually run — plus it greps the packed
+  `package.json` for `postinstall`/`preinstall`/`install` scripts and
+  fails loudly if any exist.
+- **`files:` allowlist ships what `install.sh` needs, not the audit
+  trail.** The tarball carries `install.sh`, `uninstall.sh`, `CLAUDE.md`,
+  `agents/`, `skills/`, `shell/`, `bin/`, `lib/`, `adapters/` (plus the
+  README/LICENSE npm always includes) — and explicitly NOT `tests/`,
+  `AUDIT-FABLE*.md`, `DESIGN-NOTES.md`, `IDEAS.md`, `docs/`,
+  `BENCHMARKS.md`, `CHANGELOG.md`, `examples/`, `.claude-plugin/`, or
+  `.github/`. The pack test spot-checks both directions (critical files
+  present, audit/docs cruft absent) so the allowlist can't silently drift
+  wider or narrower.
+- **`install.sh`'s `REPO_DIR` is now symlink-safe.** npm invokes
+  `amiral-install` through a symlink in its global bin dir; the old
+  `dirname "${BASH_SOURCE[0]}"` resolved to npm's bin dir instead of the
+  installed package, which would have made every `cp "$REPO_DIR/..."`
+  fail silently on first real use. Replaced with a portable symlink-chain
+  walk (POSIX `readlink`, not GNU `readlink -f`, which BSD/macOS lacks)
+  that still no-ops correctly for the plain `git clone && ./install.sh`
+  path (a non-symlink `BASH_SOURCE` just skips the loop).
+  `uninstall.sh` needed no change — it only ever reads `$CLAUDE_DIR`, never
+  a `REPO_DIR`.
+- **Publish is tag-gated and provenance-signed.** A new, separate
+  `.github/workflows/publish.yml` triggers only on `v*` tag pushes (never
+  on every commit/PR, unlike `ci.yml`) — so npm's version/download
+  counter only moves on real releases. `permissions: id-token: write` on
+  this public repo makes `npm publish --provenance` free (no signing keys
+  to manage); a guard step fails the run if the pushed tag doesn't match
+  `package.json`'s version, so a mistagged release can't publish the
+  wrong (permanent) version to npm. The pack test runs first as a
+  pre-publish gate.
+- **CI now catches version drift between the two distribution
+  channels.** A new step fails if `package.json`'s version and
+  `.claude-plugin/plugin.json`'s version disagree — the same class of
+  drift the existing agents-manifest guard catches for `core.awk`'s
+  attribution list. `plugin.json` bumped 0.16.0 → 0.17.0 to match.
+- **README gets an honest "Option C — npm"**, same tone as the
+  Plugin-manifests table row: states the scoped name (not the unrelated
+  bare `amiral` package), what npm install gives you (two PATH commands)
+  and explicitly does NOT do (touch `~/.claude`/rc/settings.json), then
+  the explicit `amiral-install` step, with the one-line WHY for the
+  two-step split.
+- **IDEAS.md's adoption-counting note updated from aspiration to
+  shipped:** npm download counts + Claude Code plugin-marketplace
+  installs + `gh api repos/Rompomepome/amiral/traffic/clones` are the
+  honest signals (stars undercount — people copy a repo URL to their
+  agent, they don't star). A home-grown telemetry ping stays permanently
+  off the table.
+
 ## v0.16.0 - 2026-07-21
 **Phantom receipts stop depressing coverage — WITHOUT hiding real data
 loss; the front door leads with measured numbers instead of borrowed

@@ -1,0 +1,46 @@
+{
+  "name": "@rompomepome/amiral",
+  "version": "0.17.0",
+  "description": "The admiral doesn't row. Orchestrator/worker model routing for Claude Code: a capable brain (Opus/Fable) plans and verifies, cheap hands (Sonnet/Haiku) execute. Works inside your plan by default.",
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "amiral-install": "./install.sh",
+    "amiral-uninstall": "./uninstall.sh"
+  },
+  "files": [
+    "install.sh",
+    "uninstall.sh",
+    "CLAUDE.md",
+    "LICENSE",
+    "README.md",
+    "agents/",
+    "skills/",
+    "shell/",
+    "bin/",
+    "lib/",
+    "adapters/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rompomepome/amiral.git"
+  },
+  "homepage": "https://github.com/Rompomepome/amiral#readme",
+  "bugs": "https://github.com/Rompomepome/amiral/issues",
+  "license": "MIT",
+  "author": {
+    "name": "Romain Poulard",
+    "url": "https://github.com/Rompomepome"
+  },
+  "keywords": [
+    "model-routing",
+    "subagents",
+    "quota",
+    "orchestrator",
+    "fable"
+  ]
+}
