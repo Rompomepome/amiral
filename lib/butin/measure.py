@@ -65,6 +65,21 @@ measured events. Correct by construction:
     id whose rate was used) and pricing_normalized:true — added only when
     normalization actually fired, so single-model undated events remain
     byte-compatible with pre-v0.15 output.
+  * DATE-AWARE PRICING — pricing.tsv rows may carry an OPTIONAL 6th column,
+    effective_from (ISO YYYY-MM-DD): a pricing_id can now have several rows,
+    one undated BASE row (applies from the beginning of time) plus any
+    number of dated cutover rows (e.g. an intro-pricing period followed by
+    a standard rate). The rate that prices a slice is chosen by the EVENT'S
+    OWN ts (the receipt's ts -- resolve_rate()/cost() take it explicitly),
+    never by the date the measurement happens to run: history is never
+    repriced, so the same receipts + transcripts always reprice to the same
+    dollar (REPRODUCIBLE, above). A malformed effective_from (anything not
+    exactly YYYY-MM-DD) skips that ROW ENTIRELY at load time -- never a
+    guessed cutover date; the pricing_id's other row(s), if any, still
+    work. If NO row is eligible for an event's date (e.g. a model whose
+    only row is dated in the future), that's a miss exactly like an unknown
+    pricing_id -- unmeasurable, never a guessed rate. A future cutover for
+    any model = add one dated row to pricing.tsv, zero code changes.
 """
 import calendar, json, os, re, sys, glob, time, shutil
 
@@ -74,17 +89,50 @@ EVENTS = os.path.join(HOME, "butin.jsonl")
 CFG = os.path.join(HOME, "butin-config.json")
 PRICES = os.environ.get("BUTIN_PRICES") or os.path.expanduser("~/.claude/butin/pricing.tsv")
 
+EFFECTIVE_FROM_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')   # ISO date, exact shape only
+
 def load_prices():
+    """rates[pricing_id] is a LIST of (effective_from_or_empty, rate_tuple)
+    — a pricing_id may have one undated BASE row ("") plus any number of
+    dated cutover rows (the OPTIONAL 6th TSV column). A 6th field is
+    accepted only if it matches EFFECTIVE_FROM_RE exactly; a malformed date
+    skips that ROW ENTIRELY (never guess a cutover date) without touching
+    the pricing_id's other row(s)."""
     rates, ver = {}, "unknown"
     for line in open(PRICES, encoding="utf-8"):
         if line.startswith("#"):
             if "pricing_version:" in line: ver = line.split("pricing_version:")[1].strip()
             continue
         p = line.rstrip("\n").split("\t")
-        if len(p) >= 5:
-            try: rates[p[0]] = tuple(float(x) for x in p[1:5])
-            except ValueError: pass
+        if len(p) < 5: continue
+        eff = ""
+        if len(p) >= 6:
+            eff = p[5]
+            if not EFFECTIVE_FROM_RE.match(eff): continue   # malformed: skip row entirely
+        try: rate = tuple(float(x) for x in p[1:5])
+        except ValueError: continue
+        rates.setdefault(p[0], []).append((eff, rate))
     return rates, ver
+
+def pick_rate(rows, event_date):
+    """rows: the (effective_from_or_empty, rate_tuple) list for ONE
+    pricing_id. Eligible rows are effective_from == "" (the undated base,
+    always eligible) or effective_from <= event_date (ISO strings compare
+    safely lexicographically — no date parsing needed). Among eligible
+    rows, the one with the lexicographically GREATEST effective_from wins
+    ("" loses to any date, so a reached cutover always outranks the base).
+    If event_date is falsy (missing/empty ts), only the undated base row is
+    eligible — never guess a rate for an event with no known date. Returns
+    a rate_tuple, or None if no row is eligible (e.g. a model whose only
+    row is a future cutover) — a miss, exactly like an unknown pricing_id."""
+    best = None   # (effective_from, rate)
+    for eff, rate in rows:
+        if not event_date:
+            if eff == "" and best is None: best = (eff, rate)
+            continue
+        if eff == "" or eff <= event_date:
+            if best is None or eff > best[0]: best = (eff, rate)
+    return best[1] if best else None
 
 def measure_transcript(path):
     """Group deduped turns BY MODEL: a `/model` switch mid-session (e.g.
@@ -142,7 +190,7 @@ def agent_name(transcript, hint, role):
 
 DATED_SUFFIX = re.compile(r'-\d{8}$')   # e.g. -20251001, exactly 8 digits
 
-def resolve_rate(rates, model):
+def resolve_rate(rates, model, event_date):
     """A pricing-table MISS on the platform's own reported id retries ONCE
     after stripping a trailing -YYYYMMDD (verified on real transcripts:
     the platform reports "claude-haiku-4-5-20251001" while pricing.tsv
@@ -151,23 +199,33 @@ def resolve_rate(rates, model):
     unknown id (no 8-digit suffix) is never touched — straight miss, no
     normalization attempted, never a neighbouring model's rate.
 
+    "Miss" now also covers a pricing_id that IS in the table but has no row
+    eligible for event_date (e.g. only a future-dated cutover row) — that's
+    unmeasurable exactly like an unknown id, so the same -YYYYMMDD retry
+    (and, failing that, the same never-guessed outcome) applies uniformly.
+
     Returns (rate_tuple_or_None, billed_id, normalized_bool)."""
-    r = rates.get(model)
+    r = pick_rate(rates.get(model, []), event_date)
     if r is not None: return r, model, False
     if DATED_SUFFIX.search(model):
         stripped = model[:-9]   # drop "-YYYYMMDD" (dash + 8 digits = 9 chars)
         # A model shaped LITERALLY "-YYYYMMDD" (e.g. "-20251001") strips to
         # "" — never look that up, a blank pricing-table key must never be
         # matched as if it were a real id.
-        if stripped and stripped in rates:
-            return rates[stripped], stripped, True
+        if stripped:
+            r2 = pick_rate(rates.get(stripped, []), event_date)
+            if r2 is not None: return r2, stripped, True
     return None, model, False
 
-def cost(rates, model, tk):
+def cost(rates, model, tk, event_date):
     """Returns (cost_or_None, billed_pricing_id, normalized_bool). billed_id
     is the id whose rate was actually used (may differ from `model` when a
-    dated id was normalized); normalized is True only in that case."""
-    r, billed_id, normalized = resolve_rate(rates, model)
+    dated id was normalized); normalized is True only in that case.
+    event_date (the receipt's own ts, sliced to YYYY-MM-DD) picks the rate
+    — REAL and counterfactual costs for the same slice always use the SAME
+    event_date, so a receipt is priced consistently regardless of when it's
+    measured (REPRODUCIBLE)."""
+    r, billed_id, normalized = resolve_rate(rates, model, event_date)
     if r is None: return None, model, False
     c = tk[0]*r[0] + tk[1]*r[1] + tk[3]*r[2] + tk[2]*r[3]   # in, out, cache_write, cache_read
     return c, billed_id, normalized
@@ -360,6 +418,14 @@ def _measure():
             kept.append(line); pending += 1; continue
         ag = agent_name(transcript, r.get("agent_hint"), r.get("role"))
 
+        # DATE-AWARE PRICING: the rate is picked by the EVENT'S OWN ts (this
+        # receipt's ts), never by "now" — the same receipts + transcripts
+        # always reprice to the same dollar, whenever measure.py happens to
+        # run (REPRODUCIBLE). Real cost and its counterfactual baseline both
+        # use this SAME event_date. A missing/empty ts leaves event_date ""
+        # — pick_rate() then only allows an undated base row.
+        event_date = (r.get("ts") or "")[:10]
+
         # MIXED-MODEL PRICING (v0.14): price each model group at ITS OWN rates
         # — a /model switch mid-session must never let the last model billed
         # price tokens it didn't generate (AUDIT-FABLE C2). ALL-OR-NOTHING: if
@@ -371,12 +437,12 @@ def _measure():
         priced, unpriced = {}, set()
         for mdl, tok in groups.items():
             tk = (tok[0], tok[1], tok[2], tok[3])
-            real, real_billed, real_norm = cost(rates, mdl, tk)
+            real, real_billed, real_norm = cost(rates, mdl, tk, event_date)
             # baseline is normalized for the counterfactual math too (never
             # let a dated baseline id go unpriced when its undated twin is
             # known) but its normalization is never stamped on the event —
             # baseline_model stays exactly what's configured.
-            cf, _, _ = cost(rates, baseline, tk)
+            cf, _, _ = cost(rates, baseline, tk, event_date)
             if real is None: unpriced.add(mdl)
             if cf is None: unpriced.add(baseline)
             if real is not None and cf is not None:

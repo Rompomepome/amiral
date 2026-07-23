@@ -177,7 +177,29 @@ if [ "${1:-}" = "config" ]; then
     ST=$(grep -oE '"set_ts"[ ]*:[ ]*"[^"]*"' "$CONFIG" | sed 's/.*"\([^"]*\)"$/\1/' 2>/dev/null); ST=${ST:-—}
     RATES=""; SPV="unknown"
     if [ -f "$CP" ]; then
-      RATES=$(awk -F'\t' -v m="$SB" '$1==m{printf "in=%s out=%s cache_write=%s cache_read=%s ($/tok)",$2,$3,$4,$5}' "$CP")
+      # DATE-AWARE PRICING: a pricing_id may now have several pricing.tsv
+      # rows (one undated BASE row + any number of dated cutover rows, an
+      # OPTIONAL 6th effective_from column). This display shows the ONE row
+      # applicable TODAY (UTC) — same selection rule as measure.py's
+      # pick_rate()/butin-collect.sh's rates(): eligible rows are the
+      # undated base or a dated row whose effective_from <= today; the
+      # GREATEST eligible effective_from wins; a malformed 6th field skips
+      # that row entirely. Without this, a 2-row baseline would concatenate
+      # BOTH rows' printf output into one garbled line.
+      CFG_TODAY="$(date -u +%F)"
+      RATES=$(awk -F'\t' -v m="$SB" -v today="$CFG_TODAY" '
+        $1==m {
+          if (NF < 6) { eff = "" }
+          else {
+            eff = $6
+            if (eff !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) next
+          }
+          if (eff == "" || eff <= today) {
+            if (!found || eff > best) { best = eff; bi = $2; bo = $3; bcw = $4; bcr = $5; found = 1 }
+          }
+        }
+        END { if (found) printf "in=%s out=%s cache_write=%s cache_read=%s ($/tok)", bi, bo, bcw, bcr }
+      ' "$CP")
       T=$(grep -oE 'pricing_version: [0-9-]+' "$CP" | head -1 | awk '{print $2}'); [ -n "$T" ] && SPV="$T"
     fi
     echo ""

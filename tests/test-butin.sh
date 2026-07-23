@@ -967,7 +967,22 @@ echo "{\"session_id\":\"PN1\",\"agent_type\":\"grunt\",\"agent_transcript_path\"
 AMIRAL_HOME="$Apn1" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
 EVPN1=$(cat "$Apn1/butin.jsonl" 2>/dev/null)
 REAL_PN1=$(echo "$EVPN1" | grep -oE '"real_cost_usd": [0-9.eE+-]+' | sed 's/.*: //')
-EXP_PN1=$(awk -F'\t' '$1=="claude-sonnet-5"{printf "%.6f", 100*$2+50*$3}' "$HERE/lib/butin/pricing.tsv")
+# v0.17.0: pricing.tsv now carries TWO rows for claude-sonnet-5 (an undated
+# base row + a dated 2026-09-01 cutover) — this fixture's receipt is
+# minted with ts="now" (via butin-collect.sh/butin-receipt.sh), so the
+# expected rate must be picked the SAME way measure.py picks it: the
+# dated row if today >= its effective_from, else the undated base row.
+# Robust across time (not just "for now"), unlike a naive single-row match.
+TODAY_PN1=$(date -u +%F)
+EXP_PN1=$(awk -F'\t' -v today="$TODAY_PN1" '
+  $1=="claude-sonnet-5" {
+    if (NF>=6 && $6<=today) { dated=1; di=$2; do_=$3 }
+    else if (NF==5)         { basei=$2; baseo=$3 }
+  }
+  END {
+    if (dated) printf "%.6f", 100*di+50*do_
+    else       printf "%.6f", 100*basei+50*baseo
+  }' "$HERE/lib/butin/pricing.tsv")
 if [ "$(grep -c '"real_cost_usd"' <<< "$EVPN1")" = "1" ] \
    && echo "$EVPN1" | grep -q '"chosen_model": "claude-sonnet-5-20251001"' \
    && echo "$EVPN1" | grep -q '"billed_pricing_id": "claude-sonnet-5"' \
@@ -1020,6 +1035,155 @@ if [ "$RCPN3" = "0" ] && ! grep -qi traceback <<< "$OUTPN3" \
   ok "PN-3 undated unknown id: unmeasurable, no crash, no normalization attempted"
 else
   ko "PN-3 rc=$RCPN3 out=[$OUTPN3] events=[$EVPN3]"
+fi
+
+
+# ─── v0.17.0 date-aware pricing (measure.py resolve_rate()/cost() pick the
+# rate by the EVENT'S OWN ts, never by the date the measurement is RUN).
+# pricing.tsv rows may carry an OPTIONAL 6th column, effective_from — the
+# same receipts + transcripts must always reprice to the same dollar
+# (REPRODUCIBLE), so history is never repriced by "now".
+export BUTIN_PRICES="$HERE/lib/butin/pricing.tsv"
+
+# Shared fixture for DA-1/DA-2: one turn, model claude-sonnet-5,
+# in=1000 out=500 cache_read=200 cache_write=100.
+#   intro rate    (undated base row):  in=0.000002 out=0.00001   cw=0.0000025  cr=0.0000002
+#     1000*0.000002 + 500*0.00001 + 100*0.0000025 + 200*0.0000002
+#   =    0.002      +   0.005     +   0.00025      +   0.00004    = 0.00729
+#   standard rate (effective_from 2026-09-01): in=0.000003 out=0.000015 cw=0.00000375 cr=0.0000003
+#     1000*0.000003 + 500*0.000015 + 100*0.00000375 + 200*0.0000003
+#   =    0.003      +   0.0075     +   0.000375      +   0.00006    = 0.010935
+DA_TX_LINE='{"message":{"id":"m1","model":"claude-sonnet-5","usage":{"input_tokens":1000,"output_tokens":500,"cache_read_input_tokens":200,"cache_creation_input_tokens":100}}}'
+
+# DA-1: event dated 2026-08-15 (before the 2026-09-01 cutover) -> intro rate.
+ADA1="$(mktemp -d)"; TDA1="$(mktemp -d)"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$ADA1/butin-config.json"
+printf '%s\n' "$DA_TX_LINE" > "$TDA1/agent-da1.jsonl"
+printf '{"v":2,"id":"da1","ts":"2026-08-15T12:00:00Z","role":"worker","session":"s","agent_hint":"grunt","transcript":"%s","cwd":"/x","measured":false}\n' "$TDA1/agent-da1.jsonl" > "$ADA1/receipts.jsonl"
+AMIRAL_HOME="$ADA1" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
+REAL_DA1=$(grep -oE '"real_cost_usd": [0-9.eE+-]+' "$ADA1/butin.jsonl" 2>/dev/null | sed 's/.*: //')
+if [ "$REAL_DA1" = "0.00729" ]; then
+  ok "DA-1 receipt dated 2026-08-15 (pre-cutover) measures at the intro rate (real_cost_usd=0.00729)"
+else
+  ko "DA-1 real=$REAL_DA1 events=[$(cat "$ADA1/butin.jsonl" 2>/dev/null)]"
+fi
+
+# DA-2: IDENTICAL tokens, event dated 2026-09-15 (on/after the cutover) ->
+# standard rate, a DIFFERENT real_cost_usd than DA-1's.
+ADA2="$(mktemp -d)"; TDA2="$(mktemp -d)"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$ADA2/butin-config.json"
+printf '%s\n' "$DA_TX_LINE" > "$TDA2/agent-da2.jsonl"
+printf '{"v":2,"id":"da2","ts":"2026-09-15T12:00:00Z","role":"worker","session":"s","agent_hint":"grunt","transcript":"%s","cwd":"/x","measured":false}\n' "$TDA2/agent-da2.jsonl" > "$ADA2/receipts.jsonl"
+AMIRAL_HOME="$ADA2" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
+REAL_DA2=$(grep -oE '"real_cost_usd": [0-9.eE+-]+' "$ADA2/butin.jsonl" 2>/dev/null | sed 's/.*: //')
+if [ "$REAL_DA2" = "0.010935" ] && [ "$REAL_DA2" != "$REAL_DA1" ]; then
+  ok "DA-2 identical tokens dated 2026-09-15 (post-cutover) measures at the standard rate (real_cost_usd=0.010935, != DA-1)"
+else
+  ko "DA-2 real=$REAL_DA2 (DA-1=$REAL_DA1) events=[$(cat "$ADA2/butin.jsonl" 2>/dev/null)]"
+fi
+
+# DA-3: a malformed effective_from row is SKIPPED ENTIRELY at load time —
+# the model still prices from its undated base row. Own temp pricing.tsv
+# (real table untouched): a valid base row for a synthetic pricing_id
+# (in=0.000001 out=0.000005 cw=0.00000125 cr=0.0000001) plus a
+# garbage-dated second row ("2026-9-1", not zero-padded YYYY-MM-DD) at a
+# conspicuously different, far pricier rate — if the parser ever let the
+# bad row through, the cost below would be wildly off, not 0.003645.
+#   1000*0.000001 + 500*0.000005 + 100*0.00000125 + 200*0.0000001
+# =    0.001      +   0.0025     +   0.000125      +   0.00002    = 0.003645
+TPDA3="$(mktemp -d)/pricing.tsv"; cp "$HERE/lib/butin/pricing.tsv" "$TPDA3"
+printf 'claude-testbad-1\t0.000001\t0.000005\t0.00000125\t0.0000001\n' >> "$TPDA3"
+printf 'claude-testbad-1\t0.0009\t0.0009\t0.0009\t0.0009\t2026-9-1\n' >> "$TPDA3"
+ADA3="$(mktemp -d)"; TDA3="$(mktemp -d)"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$ADA3/butin-config.json"
+printf '{"message":{"id":"m1","model":"claude-testbad-1","usage":{"input_tokens":1000,"output_tokens":500,"cache_read_input_tokens":200,"cache_creation_input_tokens":100}}}\n' > "$TDA3/agent-da3.jsonl"
+printf '{"v":2,"id":"da3","ts":"2026-09-15T12:00:00Z","role":"worker","session":"s","agent_hint":"grunt","transcript":"%s","cwd":"/x","measured":false}\n' "$TDA3/agent-da3.jsonl" > "$ADA3/receipts.jsonl"
+AMIRAL_HOME="$ADA3" BUTIN_PRICES="$TPDA3" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
+REAL_DA3=$(grep -oE '"real_cost_usd": [0-9.eE+-]+' "$ADA3/butin.jsonl" 2>/dev/null | sed 's/.*: //')
+if [ "$REAL_DA3" = "0.003645" ]; then
+  ok "DA-3 malformed effective_from (2026-9-1) row skipped entirely: model still prices from its base row (0.003645)"
+else
+  ko "DA-3 real=$REAL_DA3 events=[$(cat "$ADA3/butin.jsonl" 2>/dev/null)]"
+fi
+
+# DA-4: a model with ONLY a future-dated row (no base row) and an event
+# BEFORE that date -> unmeasurable "unknown pricing_id", never a guessed
+# rate. Own temp pricing.tsv, one row, effective_from far in the future.
+TPDA4="$(mktemp -d)/pricing.tsv"; cp "$HERE/lib/butin/pricing.tsv" "$TPDA4"
+printf 'claude-futureonly-1\t0.00002\t0.0001\t0.000025\t0.000002\t2027-01-01\n' >> "$TPDA4"
+ADA4="$(mktemp -d)"; TDA4="$(mktemp -d)"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$ADA4/butin-config.json"
+printf '{"message":{"id":"m1","model":"claude-futureonly-1","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' > "$TDA4/agent-da4.jsonl"
+printf '{"v":2,"id":"da4","ts":"2026-08-01T12:00:00Z","role":"worker","session":"s","agent_hint":"grunt","transcript":"%s","cwd":"/x","measured":false}\n' "$TDA4/agent-da4.jsonl" > "$ADA4/receipts.jsonl"
+AMIRAL_HOME="$ADA4" BUTIN_PRICES="$TPDA4" python3 "$HERE/lib/butin/measure.py" >/dev/null 2>&1
+EVDA4=$(cat "$ADA4/butin.jsonl" 2>/dev/null)
+if echo "$EVDA4" | grep -q '"unmeasurable": true' && echo "$EVDA4" | grep -q '"reason": "unknown pricing_id"' \
+   && echo "$EVDA4" | grep -q 'claude-futureonly-1' && ! echo "$EVDA4" | grep -q '"real_cost_usd"'; then
+  ok "DA-4 model with only a future-dated row + event before it: unmeasurable unknown pricing_id, never a guessed rate"
+else
+  ko "DA-4 events=[$EVDA4]"
+fi
+
+# DA-5: the HOT collector path (adapters/claude-code/butin-collect.sh) is
+# ALSO date-aware now — same regression class as DA-1..DA-4, just a second
+# consumer of a multi-row pricing.tsv. Own CLAUDE_CONFIG_DIR/butin/
+# pricing.tsv (butin-collect.sh has no BUTIN_PRICES override, only the
+# CLAUDE_CONFIG_DIR/butin/... resolution — a "butin" subdir is required or
+# it silently falls back to the repo table), hermetic, no real files
+# touched. A synthetic 2-row model with one row far in the PAST
+# (2020-01-01) and one far in the FUTURE (2099-01-01) makes the assertion
+# stable regardless of the real date this suite runs on: "today" always
+# falls between them, so the far-past row is always the correct pick — and
+# its rate is deliberately far cheaper than the future row's, so picking
+# the wrong one would be obvious (0.9-ish vs 0.002).
+#   in=1000 out=500 cache_read=0 cache_write=0, far-past rate in=0.000001
+#   out=0.000002 (cache columns unused since cr=cw=0 tokens):
+#     1000*0.000001 + 500*0.000002 = 0.001 + 0.001 = 0.002 -> "%.6f" = 0.002000
+CFGDA5="$(mktemp -d)"; mkdir -p "$CFGDA5/butin"
+printf '# pricing_version: test-DA5\n' > "$CFGDA5/butin/pricing.tsv"
+printf 'claude-datest-1\t0.000001\t0.000002\t0.0000005\t0.00000005\t2020-01-01\n' >> "$CFGDA5/butin/pricing.tsv"
+printf 'claude-datest-1\t0.0009\t0.0009\t0.0009\t0.0009\t2099-01-01\n' >> "$CFGDA5/butin/pricing.tsv"
+printf 'claude-baseline-x\t0.00002\t0.00004\t0\t0\n' >> "$CFGDA5/butin/pricing.tsv"
+ADA5="$(mktemp -d)"; TDA5="$(mktemp -d)"
+printf '{"baseline_model":"claude-baseline-x","mode":"api"}\n' > "$ADA5/butin-config.json"
+cat > "$TDA5/agent-collect.jsonl" << 'TXDA5'
+{"type":"user","message":{"role":"user","content":"do the task"}}
+{"type":"assistant","message":{"model":"claude-datest-1","role":"assistant","usage":{"input_tokens":1000,"output_tokens":500,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}
+TXDA5
+PLDA5="{\"session_id\":\"DA5\",\"agent_type\":\"grunt\",\"agent_transcript_path\":\"$TDA5/agent-collect.jsonl\"}"
+echo "$PLDA5" | AMIRAL_HOME="$ADA5" CLAUDE_CONFIG_DIR="$CFGDA5" bash "$HERE/adapters/claude-code/butin-collect.sh"
+LDA5=$(cat "$ADA5/butin.jsonl" 2>/dev/null)
+REAL_DA5=$(echo "$LDA5" | grep -oE '"real_cost_usd":[0-9.eE+-]+' | sed 's/.*://')
+if [ "$REAL_DA5" = "0.002000" ]; then
+  ok "DA-5 hot collector path picks the eligible row for TODAY on a 2-row model (real_cost_usd=0.002000, not the far-future rate)"
+else
+  ko "DA-5 real=$REAL_DA5 events=[$LDA5]"
+fi
+
+# DA-6: bin/amiral-butin config --show with a 2-row baseline (real
+# claude-sonnet-5) prints exactly ONE row's rates — not two printf blocks
+# concatenated with no separator. The expected row is derived the SAME way
+# the implementation picks it (greatest effective_from <= today, else the
+# undated base), so this assertion is correct on any day the suite runs,
+# not just today.
+ACDA6="$(mktemp -d)"; cp "$HERE/lib/butin/pricing.tsv" "$ACDA6/"   # no "butin/" subdir -> falls back to the repo table, same pattern as $AC elsewhere in this file
+ADA6="$(mktemp -d)"
+AMIRAL_HOME="$ADA6" CLAUDE_CONFIG_DIR="$ACDA6" bash "$HERE/bin/amiral-butin" config --baseline claude-sonnet-5 --mode api >/dev/null
+SHOWDA6=$(AMIRAL_HOME="$ADA6" CLAUDE_CONFIG_DIR="$ACDA6" NO_COLOR=1 bash "$HERE/bin/amiral-butin" config --show)
+TODAY_DA6=$(date -u +%F)
+EXP_DA6=$(awk -F'\t' -v today="$TODAY_DA6" '
+  $1=="claude-sonnet-5" {
+    if (NF < 6) { eff = "" } else { eff = $6; if (eff !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) next }
+    if (eff == "" || eff <= today) { if (!found || eff > best) { best=eff; bi=$2; bo=$3; bcw=$4; bcr=$5; found=1 } }
+  }
+  END { if (found) printf "in=%s out=%s cache_write=%s cache_read=%s ($/tok)", bi, bo, bcw, bcr }
+' "$HERE/lib/butin/pricing.tsv")
+RATE_MATCHES_DA6=$(echo "$SHOWDA6" | grep -oE 'in=[0-9.eE+-]+ out=[0-9.eE+-]+ cache_write=[0-9.eE+-]+ cache_read=[0-9.eE+-]+ \(\$/tok\)')
+RATE_COUNT_DA6=$(printf '%s\n' "$RATE_MATCHES_DA6" | grep -c '.')
+if [ "$RATE_COUNT_DA6" = "1" ] && [ "$RATE_MATCHES_DA6" = "$EXP_DA6" ]; then
+  ok "DA-6 config --show with a 2-row baseline (claude-sonnet-5) prints exactly one row's rates ($RATE_MATCHES_DA6)"
+else
+  ko "DA-6 count=$RATE_COUNT_DA6 matches=[$RATE_MATCHES_DA6] exp=[$EXP_DA6] show=[$SHOWDA6]"
 fi
 
 

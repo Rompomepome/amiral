@@ -1,15 +1,30 @@
 # amiral butin — embedded price table ($ per token, output-rate model)
-# pricing_version: 2026-07-10
-# format: pricing_id<TAB>in_usd_per_tok<TAB>out_usd_per_tok<TAB>cache_write<TAB>cache_read
+# pricing_version: 2026-07-22
+# format: pricing_id<TAB>in_usd_per_tok<TAB>out_usd_per_tok<TAB>cache_write<TAB>cache_read<TAB>[effective_from]
 # multi-provider from day one; refreshable from LiteLLM but never required.
 # dated ids: the platform may report a model id with a trailing -YYYYMMDD
 # (e.g. claude-haiku-4-5-20251001). lib/butin/measure.py retries a pricing
 # MISS exactly once with that suffix stripped; if the undated id below still
 # isn't found, the task stays unmeasurable — never a guessed/neighbouring
 # rate. Only ids listed here (dated or not) are ever priced.
+# date-aware pricing: the OPTIONAL 6th column, effective_from (ISO
+# YYYY-MM-DD), makes MULTIPLE rows per pricing_id legal — one undated BASE
+# row (applies from the beginning of time) plus any number of dated cutover
+# rows. lib/butin/measure.py picks the rate by the EVENT'S OWN ts (the
+# receipt's ts), NEVER by the date the measurement happens to run — history
+# is therefore never repriced: the same receipts + transcripts always
+# reprice to the same dollar (the REPRODUCIBLE guarantee). A future cutover
+# for any model = add one dated row here, zero code changes. A malformed
+# effective_from skips that ROW ENTIRELY (never a guessed cutover date);
+# pre-existing 5-column (undated) rows keep working unchanged.
 claude-opus-4-8	0.000015	0.000075	0.00001875	0.0000015
 claude-fable-5	0.00001	0.00005	0.0000125	0.000001
-claude-sonnet-5	0.000003	0.000015	0.00000375	0.0000003
+# claude-sonnet-5: intro pricing through 2026-08-31 (undated BASE row below
+# — also the fallback for any event whose ts predates this table), standard
+# pricing from 2026-09-01 (dated cutover row). Cache multipliers follow this
+# table's convention: cache_write = 1.25x in, cache_read = 0.10x in.
+claude-sonnet-5	0.000002	0.00001	0.0000025	0.0000002
+claude-sonnet-5	0.000003	0.000015	0.00000375	0.0000003	2026-09-01
 claude-sonnet-4-6	0.000003	0.000015	0.00000375	0.0000003
 claude-haiku-4-5	0.0000008	0.000004	0.000001	0.00000008
 gpt-5	0.00001	0.00003	0	0.0000025

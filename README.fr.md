@@ -6,7 +6,7 @@
 
 ## Le cliff de Fable 5
 
-Conditions officielles du redéploiement : Fable 5 était inclus dans les plans Pro/Max/Team (50% des limites hebdo) **seulement jusqu'au 11 juillet 2026** (Anthropic a prolongé la date initiale du 7). Depuis le 12, chaque token Fable est facturé en usage credits ($10/$50 par MTok), sans bascule automatique. amiral est la réponse directe : cerveau Fable en credits + mains pas chères = tu ne paies le tarif frontier que pour la planification. Ou `AMIRAL_BRAIN=opus amiral` pour rester 100% dans ton abonnement.
+Conditions officielles du redéploiement : Fable 5 était inclus dans les plans Pro/Max/Team (50% des limites hebdo) **seulement jusqu'au 11 juillet 2026** (Anthropic a prolongé la date initiale du 7). Le 12 juillet, chaque token Fable est passé en usage credits ($10/$50 par MTok) — puis le 20 juillet l'accès s'est scindé selon le plan : **Max et Team Premium gardent Fable inclus** (50% des limites hebdo, permanent) ; **Pro et Team Standard restent en usage credits** ($10/$50 par MTok, après un crédit unique de $100), sans bascule automatique. amiral est la réponse directe : cerveau Fable + mains pas chères = le tarif frontier (là où il est facturé) ne paie que la planification. Ou `AMIRAL_BRAIN=opus amiral` pour rester 100% dans ton abonnement.
 
 ## Le problème
 
@@ -26,7 +26,7 @@ Tu n'as pas besoin d'un modèle frontier pour renommer 40 imports. Tu en as beso
 | `amiral-ultra` | `$AMIRAL_BRAIN` + ultracode | `$AMIRAL_HANDS` forcé | Gros audits UNIQUEMENT 🔥 |
 | `matelot` | — | `$AMIRAL_HANDS` @ high | Tout le reste |
 
-Défauts : **cerveau = Opus** (inclus dans Max ; sur Pro, Claude Code sert Sonnet dans ton plan — rien à payer, rien à configurer), **mains = Sonnet**. Sur Pro et tu veux le plus léger ? `amiral-solo` (tout-Sonnet). Tu veux le cerveau premium de planification ? `AMIRAL_BRAIN=fable amiral` (facturé en credits depuis le 12 juillet).
+Défauts : **cerveau = Opus** (inclus dans Max ; sur Pro, Claude Code sert Sonnet dans ton plan — rien à payer, rien à configurer), **mains = Sonnet**. Sur Pro et tu veux le plus léger ? `amiral-solo` (tout-Sonnet). Tu veux le cerveau premium de planification ? `AMIRAL_BRAIN=fable amiral` (inclus sur Max et Team Premium — 50% des limites hebdo ; en usage credits $10/$50 par MTok sur Pro et Team Standard).
 
 ## Installation
 

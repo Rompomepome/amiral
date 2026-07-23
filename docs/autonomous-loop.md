@@ -54,7 +54,8 @@ done < "$TASKS"
 - **The corsaire still fires** on risky changes (auth, payments, data) —
   keep it wired in the policy. An unattended loop is exactly when you
   want an adversary in the path.
-- **Fable brain in a loop = credits meter running.** The loop inherits
+- **Fable brain in a loop = credits meter running** (on Pro/Team
+  Standard — Max and Team Premium have Fable included). The loop inherits
   your configured brain; `AMIRAL_BRAIN=fable ./ralph-amiral.sh` runs the
   whole batch with Fable planning. Powerful, but every iteration bills
   the brain at frontier rates — run `amiral-savings` on your expected

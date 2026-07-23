@@ -63,9 +63,13 @@ This is why the README insists you verify the routing once.
 
 ## Update — the Fable metering cliff
 
-Per Anthropic's official redeployment terms, Fable 5 is included in
-Pro/Max/Team plans only through July 11 (extended from July 7); from July 12 it is usage-credits
-only ($10/$50 per MTok), with no automatic fallback when credits are off.
+Per Anthropic's official redeployment terms, Fable 5 was included in
+Pro/Max/Team plans only through July 11 (extended from July 7). On
+July 12 it moved to usage credits ($10/$50 per MTok); on July 20 access
+split by plan: Max and Team Premium keep Fable included (up to 50% of
+weekly limits, permanent), while Pro and Team Standard stay on usage
+credits ($10/$50 per MTok, after a one-time $100 credit) with no
+automatic fallback when credits are off.
 
 This turns the routing math from quota into dollars. One planning pass
 reading 200k tokens and writing 40k costs $4.00 on Fable; the same

@@ -13,17 +13,11 @@
 
 **[🚀 Get started](#-try-it-in-5-minutes) · [🧭 Two shapes](#-two-shapes-both-included) · [🧮 Savings](#-why-this-saves-real-money) · [📊 Benchmarks](BENCHMARKS.md) · [🌍 Ports](ports/) · [🧠 How it works](docs/how-it-works.md) · [🇫🇷 Français](README.fr.md)**
 
-<p align="center">
-  <img src="assets/amiral-demo.gif" alt="amiral in action: one word, then the admiral plans, delegates and verifies" width="820"/>
-  <br/>
-  <em>One word. The admiral judges each task and routes it — trivial edits done inline, real features delegated, everything verified.</em>
-</p>
-
 ## ⚡ Main takeaways
 
 - **One word.** Type `amiral`, talk normally. It routes every task itself.
 - **Works inside the plan you already pay for.** No API key, nothing to configure.
-- **Frontier plans, cheap models execute.** Anthropic's own reference run: ~2.5x cheaper, ~3x faster.
+- **Frontier plans, cheap models execute.** Measured here: **~$880 saved over six weeks** (baseline Opus, ~70 routed tasks, observational — reproduce it: `amiral-butin backfill --all && amiral-butin`), consistent with Anthropic's own ~2.5x cheaper / ~3x faster reference run.
 - **Two shapes included:** orchestrator and advisor — the exact shapes from Anthropic's evals.
 - **5 specialized agents**, including an adversarial security pass (the corsaire).
 - **Portable** to Codex, OpenCode, Aider and 25+ tools via the open AGENTS.md standard.
@@ -54,7 +48,9 @@ included on Max, and on Pro Claude Code serves Sonnet within your plan,
 so there's nothing to pay and nothing to configure. Workers run on
 Sonnet (~1/5 the frontier cost). On a Pro plan and want the lightest
 footprint? `amiral-solo` runs an all-Sonnet fleet. Want the premium
-planning brain? `AMIRAL_BRAIN=fable amiral` (metered via credits since July 12).
+planning brain? `AMIRAL_BRAIN=fable amiral` — included on Max and Team
+Premium (up to 50% of weekly limits); metered via usage credits ($10/$50
+per MTok) on Pro and Team Standard.
 
 (Power users: optional variants and env overrides exist, but you never need them to start.)
 
@@ -90,14 +86,14 @@ Frontier models in Claude Code are the fastest way to burn a usage window:
 
 You don't need frontier intelligence to rename 40 imports. You need it to *plan* the rename and *verify* it happened. The admiral commands the fleet; the admiral doesn't row.
 
-## 💸 The Fable cliff (what changed on July 12)
+## 💸 The Fable cliff (what changed since July 12)
 
-Anthropic's [official redeployment terms](https://www.anthropic.com/news/redeploying-fable-5): Fable 5 was included in Pro/Max/Team plans (up to 50% of weekly limits) **only through July 11, 2026** (Anthropic extended the original July 7 date). Since July 12, every Fable token is billed through **usage credits at $10/$50 per MTok** — and there is no automatic fallback: if credits aren't enabled, access simply stops.
+Anthropic's [official redeployment terms](https://www.anthropic.com/news/redeploying-fable-5): Fable 5 was included in Pro/Max/Team plans (up to 50% of weekly limits) **only through July 11, 2026** (Anthropic extended the original July 7 date). On July 12 every Fable token moved to **usage credits at $10/$50 per MTok** — then on July 20 access split by plan: **Max and Team Premium keep Fable included** (up to 50% of weekly limits, permanent), while **Pro and Team Standard stay metered** via usage credits ($10/$50 per MTok, after a one-time $100 credit). On the metered plans there is still no automatic fallback: if credits aren't enabled, access simply stops.
 
 This changes the economics from *quota hygiene* to *direct money*:
 
 - **Default = Opus brain + Sonnet hands** — fully inside your subscription (Max includes Opus; Pro serves Sonnet). No credits, no config. This is what `amiral` gives you out of the box.
-- **`AMIRAL_BRAIN=fable amiral`** — opt-in premium planning brain. amiral minimizes brain tokens *by construction*, so you pay the metered frontier rate only for planning/judgment/review, never for bulk execution.
+- **`AMIRAL_BRAIN=fable amiral`** — opt-in premium planning brain. On Max/Team Premium the Fable brain runs inside your included 50%; on Pro/Team Standard, amiral minimizes brain tokens *by construction*, so you pay the metered frontier rate only for planning/judgment/review, never for bulk execution.
 - **`amiral-solo`** — all-Sonnet, the lightest footprint on a Pro plan.
 - Hands are cheaper than ever: Sonnet 5 launched at **$2/$10 intro pricing through Aug 31**.
 
@@ -371,7 +367,7 @@ One repo, three layers: universal pattern → portable discipline → Claude Cod
 The 2026 orchestration landscape is crowded with platforms — the leading one ships **250,000+ lines** of engine and is **API-only, blocked on Pro/Max subscriptions**. amiral takes the opposite bet:
 
 - **7 markdown files** and native Claude Code primitives. Nothing to adopt, no engine to break on the next release.
-- **Works on your subscription.** No API key required — it's just configuration. (Now that Fable is metered, only the *brain* needs usage credits — the whole point is minimizing those tokens. Or run `AMIRAL_BRAIN=opus` and stay fully inside your plan.)
+- **Works on your subscription.** No API key required — it's just configuration. (Now that Fable is metered on Pro and Team Standard — Max and Team Premium keep it included — only the *brain* would need usage credits, and the whole point is minimizing those tokens. Or run `AMIRAL_BRAIN=opus` and stay fully inside your plan.)
 - When you truly need swarm topologies and consensus protocols, graduate to a framework — and take the amiral policy with you.
 
 Full honest comparison (Ruflo, Code Kit, Octopus, Maestro, opusplan): [docs/landscape.md](docs/landscape.md).

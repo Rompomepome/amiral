@@ -83,7 +83,34 @@ fi
 # --- baseline + rates ---
 BASE=$(grep -oE '"baseline_model"[ ]*:[ ]*"[^"]*"' "$CONFIG" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/')
 [ -z "$BASE" ] && BASE="claude-sonnet-4-6"
-rates() { awk -F'\t' -v m="$1" '$1==m{print $2,$3,$4,$5}' "$PRICES"; }
+# DATE-AWARE PRICING: pricing.tsv rows may carry an OPTIONAL 6th column,
+# effective_from (YYYY-MM-DD) — a pricing_id can now have several rows (one
+# undated BASE row + any number of dated cutover rows), same table measure.py
+# reads. This hot path prices work that JUST completed, so the correct event
+# date is today (UTC) — TS is already "date -u +%FT%TZ" from above, so its
+# date prefix IS today, no second `date` call needed. Eligible rows are the
+# undated base (no 6th field) or a dated row whose effective_from <= today;
+# among eligible rows the GREATEST effective_from wins (undated loses to any
+# reached cutover) — same selection rule as measure.py's pick_rate(). A
+# malformed 6th field (not exactly YYYY-MM-DD) skips that row entirely, never
+# a guessed cutover date. No eligible row -> no rate, same MISS as an unknown
+# model today (never a guessed/neighbouring rate).
+TODAY="${TS%%T*}"
+rates() {
+  awk -F'\t' -v m="$1" -v today="$TODAY" '
+    $1==m {
+      if (NF < 6) { eff = "" }
+      else {
+        eff = $6
+        if (eff !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) next   # malformed: skip row entirely
+      }
+      if (eff == "" || eff <= today) {
+        if (!found || eff > best) { best = eff; bi = $2; bo = $3; bcw = $4; bcr = $5; found = 1 }
+      }
+    }
+    END { if (found) print bi, bo, bcw, bcr }
+  ' "$PRICES"
+}
 PVER=$(grep -oE 'pricing_version: [0-9-]+' "$PRICES" | head -1 | awk '{print $2}'); PVER=${PVER:-unknown}
 CHOSEN_R=$(rates "$MODEL"); BASE_R=$(rates "$BASE")
 if [ -z "$CHOSEN_R" ] || [ -z "$BASE_R" ]; then
