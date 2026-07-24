@@ -637,8 +637,25 @@ VER=$(echo "$REPORT" | awk -F'\t' '/^VERIFIED/{print $2"/"($2+$3)}')
 # NOT `|| echo 0`: under pipefail, grep -c prints "0" AND exits 1 on a
 # present-but-matchless file (routine once cache.sh drains receipts), so the
 # fallback would append a second "0" line and crash the arithmetic below.
-PEND=$(grep -c '"measured":false' "$AMIRAL_HOME/receipts.jsonl" 2>/dev/null | tr -d " ")
+# v0.18.1: count only VALID physical lines (same ^{.*}$ anchor as the
+# corrupt-line surfacing below) — a torn receipt's second half contains the
+# literal text "measured":false and would otherwise inflate pending by one
+# per torn line, the exact pending-inflation dishonesty the corrupt counter
+# exists to prevent.
+PEND=$(grep -E '^\{.*\}$' "$AMIRAL_HOME/receipts.jsonl" 2>/dev/null | grep -c '"measured":false' | tr -d " ")
 PEND=${PEND:-0}
+# v0.18.1: a receipts.jsonl PHYSICAL LINE that fails this exact anchor
+# (starts with { AND ends with }) is a TORN line — the pre-v0.18.1
+# butin-receipt.sh bug where a background subagent's duplicated agent_type
+# leaked a literal embedded newline into agent_hint, splitting one receipt
+# into two physical lines. Never repaired here (measure.py keeps it
+# verbatim forever, per its own "corrupt" counter) — just surfaced, so a
+# user with old data isn't left wondering why some worker never gets
+# measured: both transcript-claiming sites in butin-receipt.sh already
+# ignore a torn line, so its transcript is unclaimed and gets a fresh clean
+# receipt (and gets measured) on the next brain Stop.
+CORRUPT_LINES=$(grep -vcE '^\{.*\}$' "$AMIRAL_HOME/receipts.jsonl" 2>/dev/null | tr -d " ")
+CORRUPT_LINES=${CORRUPT_LINES:-0}
 TOTAL=$((${MEAS:-0} + ${UNMEAS:-0} + PEND))
 echo ""
 [ "${PEND:-0}" != "0" ] && echo "  ${COPPER}${PEND} task(s) awaiting measurement (transcript not flushed yet — run again later)${RST}"
@@ -651,6 +668,9 @@ echo "  ${DIM}Coverage: ${MEAS:-0}/$TOTAL measured${COVNOTE}${RST}"
 # written — v0.14 finding) are excluded from the denominator above; shown
 # here on their own line so they stay visible without depressing coverage.
 [ "${PHANTOM:-0}" != "0" ] && echo "  ${DIM}${PHANTOM} phantom receipt(s) excluded from coverage (SubagentStop minted a transcript that was never written — v0.14 finding; see --detail)${RST}"
+# v0.18.1: see the CORRUPT_LINES comment above — gated on N>0 so a clean
+# ledger's output is byte-identical to before this warning existed.
+[ "${CORRUPT_LINES:-0}" != "0" ] && echo "  ${DIM}${CORRUPT_LINES} corrupt receipt line(s) in receipts.jsonl (kept verbatim, never deleted) — their transcripts are re-discovered and measured; a butin-receipt.sh older than v0.18.1 wrote them on background subagents${RST}"
 UML=$(echo "$REPORT" | awk -F'\t' '/^UMODEL/{printf "%s (%s) ",$2,$3}')
 [ -n "$UML" ] && echo "  ${COPPER}unmeasured models: ${UML}— price them: amiral-butin add-model <id> <in_\$/Mtok> <out_\$/Mtok>${RST}"
 [ -n "$VER" ] && [ "$VER" != "0/0" ] && echo "  ${DIM}Verified through the gate: $VER measured tasks${RST}"

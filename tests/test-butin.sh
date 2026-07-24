@@ -1559,5 +1559,161 @@ else
 fi
 
 
+# ─── v0.18.1 receipt-corruption fix: background_tasks[]'s duplicated
+# "agent_type" used to leak through g()'s old whole-payload grep as a
+# literal embedded newline in agent_hint, tearing one receipt into two
+# physical lines. g() is now a top-level-only JSON scan; both
+# transcript-claiming sites ignore a torn line instead of silently letting
+# it block re-discovery forever; measure.py counts a torn line as `corrupt`,
+# never `pending`; the report surfaces it. ───
+
+# REPLAY: the real captured background-subagent SubagentStop payload
+# (structure verbatim — only the three transcript/cwd placeholders are
+# templated to test-local files) must mint exactly ONE clean receipt line.
+ARP="$(mktemp -d)"
+TRP="$(mktemp -d)"
+MAIN_RP="$TRP/main.jsonl"; AGENT_RP="$TRP/agent-bg.jsonl"
+printf '{"type":"user","message":{"role":"user","content":"ping"}}\n' > "$MAIN_RP"
+printf '{"type":"assistant","message":{"model":"claude-sonnet-5","role":"assistant","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' > "$AGENT_RP"
+PLRP=$(sed "s|__MAIN_TRANSCRIPT__|$MAIN_RP|;s|__AGENT_TRANSCRIPT__|$AGENT_RP|;s|__CWD__|$TRP|" "$HERE/tests/fixtures/subagent-bg-payload.json")
+echo "$PLRP" | AMIRAL_HOME="$ARP" bash "$HERE/adapters/claude-code/butin-receipt.sh"
+RP_LINES=$(grep -c '.' "$ARP/receipts.jsonl" 2>/dev/null); RP_LINES=${RP_LINES:-0}
+RP_LAST=$(tail -1 "$ARP/receipts.jsonl" 2>/dev/null)
+if [ "$RP_LINES" = "1" ] \
+   && python3 -c "import json,sys; json.loads(sys.argv[1])" "$RP_LAST" >/dev/null 2>&1 \
+   && echo "$RP_LAST" | grep -q '"agent_hint":"general-purpose"'; then
+  ok "REPLAY background-subagent payload: ONE clean receipt line, agent_hint=general-purpose (no torn newline)"
+else
+  ko "REPLAY lines=$RP_LINES receipts=[$(cat "$ARP/receipts.jsonl" 2>/dev/null)]"
+fi
+
+# TORN-LINE UNCLAIM: seed receipts.jsonl with the exact two-physical-line
+# corrupt shape this bug used to write (a literal newline inside
+# agent_hint), pointing at a real worker transcript with known usage. Run
+# the brain Stop branch (discovery) over that transcript's session — the
+# torn line must no longer block re-discovery: a fresh clean receipt is
+# minted, and measure.py then measures it, WHILE the corrupt line stays
+# byte-identically present (never destroyed) and is reported via `corrupt`.
+ATL="$(mktemp -d)"
+TTL="$(mktemp -d)"; mkdir -p "$TTL/STL/subagents"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$ATL/butin-config.json"
+MAIN_TL="$TTL/STL.jsonl"
+printf '{"type":"user","message":{"role":"user","content":"go"}}\n' > "$MAIN_TL"
+AGENT_TL="$TTL/STL/subagents/agent-torn.jsonl"
+echo '{"agentType":"grunt","spawnDepth":1}' > "$TTL/STL/subagents/agent-torn.meta.json"
+printf '{"message":{"id":"tlm1","model":"claude-sonnet-5","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' > "$AGENT_TL"
+TORN_HINT=$'general-purpose\ngeneral-purpose'
+printf '{"v":2,"id":"torn1","ts":"%s","role":"worker","session":"STL","agent_hint":"%s","transcript":"%s","cwd":"%s","measured":false,"observed":true}\n' \
+  "$(date -u +%FT%TZ)" "$TORN_HINT" "$AGENT_TL" "$TTL" > "$ATL/receipts.jsonl"
+TL_CORRUPT_BEFORE="$(cat "$ATL/receipts.jsonl")"
+echo "{\"session_id\":\"STL\",\"transcript_path\":\"$MAIN_TL\"}" \
+  | AMIRAL_HOME="$ATL" bash "$HERE/adapters/claude-code/butin-receipt.sh" --brain
+TL_DISCOVERED=no
+grep -qF -- "$AGENT_TL" "$ATL/receipts.jsonl" 2>/dev/null && grep -q '"id":"torn1"' "$ATL/receipts.jsonl" 2>/dev/null && TL_DISCOVERED=yes
+if [ "$TL_DISCOVERED" = "yes" ]; then
+  ok "TORN-LINE UNCLAIM: discovery mints a fresh receipt for the torn line's transcript (torn line no longer blocks it)"
+else
+  ko "TORN-LINE UNCLAIM: receipts=[$(cat "$ATL/receipts.jsonl" 2>/dev/null)]"
+fi
+# The corrupt line's OWN second physical half also textually contains
+# AGENT_TL (it carries the "transcript" kv) — a plain grep for the path
+# would therefore "find" it forever, corrupt line or not. Capture the
+# freshly-discovered CLEAN line's own id instead (the only line matching
+# BOTH the AGENT_TL path and the ^{.*}$ anchor) so the post-measure.py
+# drain check below is unambiguous.
+DISC_ID=$(grep -E '^\{.*\}$' "$ATL/receipts.jsonl" 2>/dev/null | grep -F -- "$AGENT_TL" \
+  | grep -oE '"id":"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+export BUTIN_PRICES="$HERE/lib/butin/pricing.tsv"
+OUTTL=$(AMIRAL_HOME="$ATL" BUTIN_STABLE_SECS=0 python3 "$HERE/lib/butin/measure.py")
+TL_MEASURED=no
+grep -F -- "$AGENT_TL" "$ATL/butin.jsonl" 2>/dev/null | grep -q real_cost_usd && TL_MEASURED=yes
+TL_AFTER="$(cat "$ATL/receipts.jsonl" 2>/dev/null)"
+# The corrupt fixture's two physical lines are never reordered or rewritten
+# — only appended-after content can ever separate them from later entries
+# (here, the brain receipt for the main transcript, which stays pending:
+# a plain "user" message carries no usage) — so TL_CORRUPT_BEFORE must
+# still be an exact PREFIX of TL_AFTER, byte for byte.
+TL_PREFIX_OK=no
+case "$TL_AFTER" in "$TL_CORRUPT_BEFORE"*) TL_PREFIX_OK=yes ;; esac
+TL_DRAINED=no
+[ -n "$DISC_ID" ] && { grep -qF -- "\"$DISC_ID\"" "$ATL/receipts.jsonl" 2>/dev/null || TL_DRAINED=yes; }
+if [ "$TL_MEASURED" = "yes" ] && [ "$TL_PREFIX_OK" = "yes" ] && [ "$TL_DRAINED" = "yes" ] && echo "$OUTTL" | grep -qE "corrupt [1-9]"; then
+  ok "TORN-LINE UNCLAIM: re-discovered transcript measured (real_cost_usd) & drained, torn line byte-identical & counted as corrupt"
+else
+  ko "TORN-LINE UNCLAIM measure: measured=$TL_MEASURED prefix_ok=$TL_PREFIX_OK drained=$TL_DRAINED out=[$OUTTL] receipts_after=[$TL_AFTER] receipts_before=[$TL_CORRUPT_BEFORE]"
+fi
+
+# PLAIN-BRANCH dedup still works on CLEAN lines (no regression on F1 from
+# the new anchor filter around the transcript-claim grep).
+APD="$(mktemp -d)"
+TPD="$(mktemp -d)"
+PD_T="$TPD/agent-pd.jsonl"
+printf '{"message":{"id":"pdm","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' > "$PD_T"
+echo "{\"session_id\":\"PD\",\"agent_type\":\"grunt\",\"agent_transcript_path\":\"$PD_T\"}" \
+  | AMIRAL_HOME="$APD" bash "$HERE/adapters/claude-code/butin-receipt.sh"
+PD_FIRST=$(grep -c '.' "$APD/receipts.jsonl" 2>/dev/null); PD_FIRST=${PD_FIRST:-0}
+echo "{\"session_id\":\"PD\",\"agent_type\":\"grunt\",\"agent_transcript_path\":\"$PD_T\"}" \
+  | AMIRAL_HOME="$APD" bash "$HERE/adapters/claude-code/butin-receipt.sh"
+PD_SECOND=$(grep -c '.' "$APD/receipts.jsonl" 2>/dev/null); PD_SECOND=${PD_SECOND:-0}
+if [ "$PD_FIRST" = "1" ] && [ "$PD_SECOND" = "1" ]; then
+  ok "PLAIN-DEDUP: a clean receipt line still dedups a repeat worker hook firing (F1 unaffected by the torn-line anchor filter)"
+else
+  ko "PLAIN-DEDUP first=$PD_FIRST second=$PD_SECOND receipts=[$(cat "$APD/receipts.jsonl" 2>/dev/null)]"
+fi
+
+# REPORT WARNING: bin/amiral-butin surfaces a corrupt receipts.jsonl line;
+# a clean ledger prints no such warning.
+ARW="$(mktemp -d)"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$ARW/butin-config.json"
+printf '{"v":1,"id":"rw1","agent":"grunt","real_cost_usd":0.01,"counterfactual_cost_usd":0.05,"outcome":"ok"}\n' > "$ARW/butin.jsonl"
+RW_HINT=$'general-purpose\ngeneral-purpose'
+printf '{"v":2,"id":"rwc","ts":"%s","role":"worker","session":"s","agent_hint":"%s","transcript":"/x/agent-rw.jsonl","cwd":"/x","measured":false,"observed":true}\n' \
+  "$(date -u +%FT%TZ)" "$RW_HINT" > "$ARW/receipts.jsonl"
+OUTRW=$(AMIRAL_HOME="$ARW" CLAUDE_CONFIG_DIR="$AC" NO_COLOR=1 bash "$HERE/bin/amiral-butin")
+echo "$OUTRW" | grep -q "corrupt receipt line" && ok "REPORT-WARN: corrupt receipts.jsonl line triggers the warning" || ko "REPORT-WARN missing warning: out=[$OUTRW]"
+# v0.18.1: the torn line's SECOND physical half contains the literal text
+# "measured":false — the report's PEND count anchors on valid ^{.*}$ lines,
+# so a ledger whose only receipt is torn must show ZERO pending, not 1.
+if echo "$OUTRW" | grep -q "awaiting measurement"; then
+  ko "REPORT-WARN: torn line's second half inflated pending: out=[$OUTRW]"
+else
+  ok "REPORT-WARN: torn line's second half does not inflate pending (PEND anchors on valid lines)"
+fi
+
+ARW2="$(mktemp -d)"
+printf '{"baseline_model":"claude-opus-4-8","mode":"api"}\n' > "$ARW2/butin-config.json"
+printf '{"v":1,"id":"rw2","agent":"grunt","real_cost_usd":0.01,"counterfactual_cost_usd":0.05,"outcome":"ok"}\n' > "$ARW2/butin.jsonl"
+printf '{"v":2,"id":"rwok","ts":"%s","role":"worker","session":"s","agent_hint":"grunt","transcript":"/x/agent-ok.jsonl","cwd":"/x","measured":false,"observed":true}\n' "$(date -u +%FT%TZ)" > "$ARW2/receipts.jsonl"
+OUTRW2=$(AMIRAL_HOME="$ARW2" CLAUDE_CONFIG_DIR="$AC" NO_COLOR=1 bash "$HERE/bin/amiral-butin")
+if echo "$OUTRW2" | grep -q "corrupt receipt line"; then
+  ko "REPORT-WARN: false positive on a clean ledger: out=[$OUTRW2]"
+else
+  ok "REPORT-WARN: clean ledger prints no corrupt-line warning"
+fi
+
+# EXTRACTOR tricky payload shapes: a last_assistant_message that contains
+# the LITERAL JSON-escaped text \"agent_type\":\"forged\" must not leak into
+# agent_hint (the real top-level agent_type must win), and a value ending in
+# an escaped backslash immediately before the closing quote (\\") must not
+# desync the scanner (proven here by the field extracting cleanly at all,
+# AND by the real field still winning over the forged one).
+TFORGE="$(mktemp -d)"
+FORGE_T="$TFORGE/agent-forge.jsonl"
+printf '{"message":{"id":"fm","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}\n' > "$FORGE_T"
+PAYLOAD_FORGE='{"session_id":"FORGE","agent_type":"real-type","agent_transcript_path":"'"$FORGE_T"'","cwd":"/x","last_assistant_message":"before \"agent_type\":\"forged\" after, ends in a backslash\\"}'
+AFORGE="$(mktemp -d)"
+echo "$PAYLOAD_FORGE" | AMIRAL_HOME="$AFORGE" bash "$HERE/adapters/claude-code/butin-receipt.sh"
+FORGE_LAST=$(tail -1 "$AFORGE/receipts.jsonl" 2>/dev/null)
+if python3 -c "
+import json,sys
+d = json.loads(sys.argv[1])
+sys.exit(0 if d.get('agent_hint') == 'real-type' else 1)
+" "$FORGE_LAST" >/dev/null 2>&1; then
+  ok 'EXTRACTOR: a forged \"agent_type\":\"forged\" inside last_assistant_message never leaks into agent_hint (real-type wins, scanner not desynced by \\")'
+else
+  ko "EXTRACTOR forged-payload leak: receipts=[$FORGE_LAST]"
+fi
+
+
 echo ""; echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

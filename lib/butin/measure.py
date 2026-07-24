@@ -51,6 +51,21 @@ measured events. Correct by construction:
     re-measured and not kept pending. This is belt-and-braces: the source
     (adapters/claude-code/butin-receipt.sh) now also dedups a plain worker
     receipt against receipts.jsonl + butin.jsonl before it's ever written.
+  * CORRUPT IS NOT PENDING (v0.18.1) — a receipts.jsonl line that fails
+    json.loads outright (a torn line — see butin-receipt.sh's v0.18.1
+    header paragraph: a pre-v0.18.1 background-subagent payload could carry
+    a duplicated "agent_type" that turned into a literal embedded newline,
+    splitting one receipt into two physical lines, each unparseable on its
+    own) is kept verbatim FOREVER, same as always — never destroyed, never
+    repaired. But it is no longer counted as `pending`: pending means "will
+    resolve on a future run" (the transcript just isn't stable/present yet),
+    and a torn line never will — its transcript is instead re-discovered and
+    measured under a FRESH, clean receipt (the torn line no longer claims
+    it; see butin-receipt.sh's torn-line guards). Counted in a separate
+    `corrupt` counter instead, so pending keeps meaning what it says. An
+    id-less-but-otherwise-parseable line is a different, legitimate case —
+    unchanged, still `pending` (nothing can ever be deduped against it, but
+    it isn't garbage either).
     Brain is exempt — the Stop hook legitimately re-references the SAME
     main transcript every turn (the supersede flow above).
   * DATED MODEL IDS ARE NORMALIZED ONCE, NEVER GUESSED — the platform
@@ -327,7 +342,7 @@ def _measure():
         if e.get("agent") != "brain" and e.get("transcript") and "real_cost_usd" in e:
             measured_transcripts.add(e["transcript"])
 
-    kept, measured, pending, unmeasurable, dup_receipts = [], 0, 0, 0, 0
+    kept, measured, pending, unmeasurable, dup_receipts, corrupt = [], 0, 0, 0, 0, 0
     new_events = []
     brain_replace = {}   # session -> LIST of new brain events (one per model seen
                           # on this session's latest receipt) that supersede ALL
@@ -339,7 +354,14 @@ def _measure():
             # used to be silently dropped on rewrite (permanent data loss,
             # contradicting "pending, not invented") — keep it verbatim; it
             # stays in the file for a human or a future parser.
-            kept.append(line); pending += 1; continue
+            # v0.18.1: counted as `corrupt`, NOT `pending` — see the
+            # docstring's CORRUPT IS NOT PENDING bullet above. A torn line
+            # (butin-receipt.sh's pre-v0.18.1 background-subagent bug) can
+            # never resolve on a future run the way a genuinely pending
+            # receipt can; its transcript is re-discovered under a fresh
+            # receipt instead, so counting it as pending would inflate that
+            # number forever with something that will never clear.
+            kept.append(line); corrupt += 1; continue
         if r.get("id") in done: continue
         # An id-less receipt can never be deduped against the done set, so no
         # event may ever be written for it (re-runs would double-write), and
@@ -518,7 +540,11 @@ def _measure():
     receipts_tmp = f"{RECEIPTS}.tmp.{os.getpid()}"
     with open(receipts_tmp, "w", encoding="utf-8") as f: f.writelines(kept)
     os.replace(receipts_tmp, RECEIPTS)
-    print(f"measured {measured} · pending {pending} · unmeasurable {unmeasurable} · dup_receipts {dup_receipts}")
+    # v0.18.1: `corrupt` is appended ONLY when > 0 — a clean run's output
+    # stays byte-identical to pre-v0.18.1 (no new trailing text to break an
+    # existing exact-match assertion or downstream parser).
+    corrupt_suffix = f" · corrupt {corrupt}" if corrupt else ""
+    print(f"measured {measured} · pending {pending} · unmeasurable {unmeasurable} · dup_receipts {dup_receipts}{corrupt_suffix}")
     return 0
 
 if __name__ == "__main__": sys.exit(main())

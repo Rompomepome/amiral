@@ -28,6 +28,29 @@
 # just discovery skipping paths SubagentStop already claimed, but also a
 # late SubagentStop firing skipping a path discovery already recorded or
 # measured).
+#
+# v0.18.1 GROUND TRUTH UPDATE: verified live 2026-07-22 on Claude Code
+# 2.1.217 that SubagentStop is NOT dead after all — it fires again for real
+# Agent-tool subagents, both synchronous and background. Background is the
+# platform's own default as of v2.1.198 (the v0.14 finding above was true
+# for the build it was verified on; the platform has moved since — v0.14's
+# discovery scan stays exactly as it was, it is still what finds and
+# receipts a worker transcript this revived path might otherwise miss or
+# double up on). A background firing's SubagentStop payload carries a
+# background_tasks[] array whose entries repeat "agent_type" alongside the
+# real top-level field of the same name — g()'s old whole-payload grep
+# couldn't tell the two apart, matched BOTH occurrences, and the printf
+# further down wrote the second match as a literal embedded newline inside
+# "agent_hint", tearing one JSON receipt into two physical lines (a corrupt
+# line — never silently dropped or repaired; see the torn-line guards on
+# both transcript-claiming sites below, and measure.py's "corrupt" counter,
+# and bin/amiral-butin's report warning). g() is now a top-level-only
+# extractor: a character-by-character JSON scan (string/escape/depth aware,
+# BSD-awk-safe — no gensub, no split(...,"")) that only ever considers a
+# key at depth 1 (directly inside the outer object), so a same-named field
+# nested inside an array or object (background_tasks[].agent_type, or any
+# future lookalike) can never again be mistaken for the platform's own
+# top-level field.
 export LC_ALL=C
 set -uo pipefail
 AMIRAL_HOME="${AMIRAL_HOME:-$HOME/.amiral}"
@@ -55,17 +78,124 @@ _hostile_path() {
 
 ROLE="worker"; [ "${1:-}" = "--brain" ] && ROLE="brain"
 IN="$(cat 2>/dev/null || true)"
-g() { echo "$IN" | grep -oE "\"$1\"[ ]*:[ ]*\"[^\"]*\"" | sed 's/.*"\([^"]*\)"$/\1/'; }
+# v0.18.1: top-level-ONLY field extractor (see the header paragraph above
+# for the bug this replaces). printf, never echo — echo's behavior on a
+# leading/embedded backslash varies by shell/build config, and a backslash
+# inside a JSON string value (last_assistant_message in particular) must
+# reach awk byte-for-byte or the escape-aware scan below desyncs.
+#
+# The scan is a 3-state machine: in_string (are we inside a "..." token),
+# escape (the char after a backslash IN a string is consumed literally,
+# never re-examined — this is what keeps \" and \\ from ever closing a
+# string early or late), and depth (incremented on { or [ OUTSIDE a string,
+# decremented on } or ]; strings never touch it). A string that CLOSES
+# while depth==1 is either a top-level KEY (if a bare ':' follows) or a
+# top-level VALUE (if it directly follows a top-level key's ':') — anything
+# that opens/closes at depth>1 (an array/object member, e.g. the bg-task
+# entries' own "agent_type") is invisible to this logic by construction, no
+# matter what its key is named. A non-string value (number/bool/null/nested
+# array/object) is simply walked over by the same depth/string state
+# machine and never printed, matching what the old whole-payload regex
+# would have matched anyway (it only ever captured quoted values).
+# substr()-based iteration only — split($0,"",arr) is not BSD-awk portable.
+#
+# SINGLE-PASS (v0.18.1 hardening): a hook firing used to call this scanner
+# 4-5 times (once per wanted field), each an INDEPENDENT full traversal of
+# IN — cheap today only because every wanted key happens to precede
+# last_assistant_message in the platform's current field order. If that
+# order ever changes (or a hostile payload deliberately front-loads a huge
+# last_assistant_message), each of those 4-5 calls pays the full-payload
+# cost separately: a multiplier on top of an already worst-case scan. g_all()
+# replaces all of them with ONE traversal that collects every wanted
+# top-level string field in a single pass, printing "key<TAB>value" per
+# field found (a raw, unescaped TAB is an illegal byte inside a JSON
+# string — the scanner preserves escaping byte-for-byte, so an escaped \t
+# in a value stays the two characters \ and t, never a real tab — the
+# output's own field separator can never collide with a value). FIRST
+# occurrence per key still wins (same threat model as the F3(a)
+# duplicate-key note elsewhere in this file: a later forged duplicate top-
+# level key can never override one already found) — enforced by the
+# `found[]` gate below, not by scan order. The scan EXITS as soon as every
+# wanted key has been found at least once: with today's field ordering
+# that happens well before last_assistant_message's content is reached, so
+# the common case stays exactly as cheap as a single g() call was. Residual
+# worst case: a payload where the wanted keys are absent or reordered AFTER
+# a huge field (a role=brain payload that legitimately never carries
+# agent_type/agent_transcript_path, for instance) never satisfies the
+# early-exit and pays one FULL scan of IN — but only ONE, not a 4-5x
+# multiplier of one, which is the bound this restructure exists to
+# guarantee regardless of what the platform ever reorders.
+g_all() {
+  printf '%s' "$IN" | awk '
+  BEGIN {
+    wanted["session_id"] = 1; wanted["transcript_path"] = 1
+    wanted["agent_transcript_path"] = 1; wanted["agent_type"] = 1; wanted["cwd"] = 1
+    need = 5
+  }
+  { full = full $0 }
+  END {
+    depth = 0; instr = 0; esc = 0; want = ""; key = ""; pendkey = ""; buf = ""
+    n = length(full)
+    for (i = 1; i <= n; i++) {
+      c = substr(full, i, 1)
+      if (instr) {
+        if (esc) { buf = buf c; esc = 0; continue }
+        if (c == "\\") { buf = buf c; esc = 1; continue }
+        if (c == "\"") {
+          instr = 0
+          if (strdepth == 1) {
+            if (want == "value") {
+              if ((key in wanted) && !(key in found)) {
+                print key "\t" buf
+                found[key] = 1; need--
+                if (need <= 0) exit
+              }
+              want = ""
+            } else {
+              pendkey = buf; want = "key_pending"
+            }
+          }
+          continue
+        }
+        buf = buf c; continue
+      }
+      if (c == "\"") { instr = 1; esc = 0; buf = ""; strdepth = depth; continue }
+      if (c == "{" || c == "[") { depth++; continue }
+      if (c == "}" || c == "]") { depth--; if (depth == 1) want = ""; continue }
+      if (depth == 1) {
+        if (c == ":" && want == "key_pending") { key = pendkey; want = "value"; continue }
+        if (c == ",") { want = "" }
+      }
+    }
+  }
+  '
+}
 
-SESSION="$(g session_id)"
+# Parse g_all()'s key<TAB>value stream ONCE into staging variables, then
+# apply the existing role-based selection below — every downstream variable
+# name (SESSION, TRANSCRIPT, AGENT, CWD, TS, AID) and its semantics are
+# unchanged from the 4-5-call version. Process substitution (not a pipe into
+# the loop) so the assignments land in THIS shell, not a subshell.
+_SESSION_ID=""; _TRANSCRIPT_PATH=""; _AGENT_TRANSCRIPT_PATH=""; _AGENT_TYPE=""; _CWD=""
+while IFS=$'\t' read -r _GK _GV; do
+  case "$_GK" in
+    session_id) _SESSION_ID="$_GV" ;;
+    transcript_path) _TRANSCRIPT_PATH="$_GV" ;;
+    agent_transcript_path) _AGENT_TRANSCRIPT_PATH="$_GV" ;;
+    agent_type) _AGENT_TYPE="$_GV" ;;
+    cwd) _CWD="$_GV" ;;
+  esac
+done < <(g_all)
+
+SESSION="$_SESSION_ID"
 TS="$(date -u +%FT%TZ)"
 if [ "$ROLE" = "brain" ]; then
-  TRANSCRIPT="$(g transcript_path)"; AGENT="brain"; AID="main"
+  TRANSCRIPT="$_TRANSCRIPT_PATH"; AGENT="brain"; AID="main"
 else
-  TRANSCRIPT="$(g agent_transcript_path)"; AGENT="$(g agent_type)"
+  TRANSCRIPT="$_AGENT_TRANSCRIPT_PATH"; AGENT="$_AGENT_TYPE"
   AID="$(basename "${TRANSCRIPT:-unknown}" .jsonl)"
 fi
-CWD="$(g cwd)"
+CWD="$_CWD"
 ID="$(printf '%s' "$SESSION-$AID-$TS-$$-${RANDOM:-0}" | shasum 2>/dev/null | awk '{print substr($1,1,12)}')"
 
 # F1: dedup the PLAIN branch (a genuine SubagentStop/Stop firing) against
@@ -82,7 +212,15 @@ SKIP=0
 if [ -n "${TRANSCRIPT:-}" ] && _hostile_path "$TRANSCRIPT"; then
   SKIP=1
 elif [ "$ROLE" = "worker" ] && [ -n "${TRANSCRIPT:-}" ] \
-     && { grep -qF -- "$TRANSCRIPT" "$RECEIPTS" 2>/dev/null || grep -qF -- "$TRANSCRIPT" "$EVENTS" 2>/dev/null; }; then
+     && { grep -E '^\{.*\}$' "$RECEIPTS" 2>/dev/null | grep -qF -- "$TRANSCRIPT" \
+          || grep -E '^\{.*\}$' "$EVENTS" 2>/dev/null | grep -qF -- "$TRANSCRIPT"; }; then
+  # v0.18.1: only a physical line matching ^{.*}$ (starts with { AND ends
+  # with }) can claim a transcript here. A torn line (the v0.18.1 bug —
+  # background_tasks[]'s duplicate agent_type turning into an embedded
+  # newline) fails this anchor on BOTH of its physical halves — the first
+  # half never reaches the closing }, the second never opens with { — so it
+  # claims nothing, and the transcript it names stays unclaimed instead of
+  # silently blocking a clean re-mint forever.
   SKIP=1
 elif [ "$ROLE" = "worker" ] && [ -n "${TRANSCRIPT:-}" ] && [ ! -f "$TRANSCRIPT" ]; then
   # v0.16 PHANTOM FIX: per the header's v0.14 discovery, SubagentStop on this
@@ -134,7 +272,16 @@ if [ "$ROLE" = "brain" ] && [ -n "${TRANSCRIPT:-}" ]; then
     # count per turn is normally 0-2, so the per-entry lookups below stay
     # cheap too).
     KNOWN="$(mktemp 2>/dev/null || echo "$AMIRAL_HOME/.discover-known.$$")"
-    grep -ho '"transcript"[ ]*:[ ]*"[^"]*"' "$RECEIPTS" "$EVENTS" 2>/dev/null \
+    # v0.18.1: only harvest "transcript" kvs from lines matching ^{.*}$ (same
+    # anchor as the plain-branch dedup above) — one extra grep stage in the
+    # SAME pipeline, still one pass over the files, not a per-file re-read
+    # (the O(N)-per-turn cost F2 above exists to kill). A torn line (see the
+    # v0.18.1 header paragraph) fails that anchor on both of its physical
+    # halves, so the transcript it names is never harvested into KNOWN here
+    # either — it stays undiscovered-as-known and gets a fresh clean receipt
+    # minted for it below, same as if no receipt had ever existed.
+    grep -hE '^\{.*\}$' "$RECEIPTS" "$EVENTS" 2>/dev/null \
+      | grep -o '"transcript"[ ]*:[ ]*"[^"]*"' \
       | sed 's/.*"\([^"]*\)"$/\1/' > "$KNOWN" 2>/dev/null
     for AT in "$SUBDIR"/agent-*.jsonl; do
       [ -f "$AT" ] || continue   # unmatched glob, or a non-file: never fabricate a receipt
